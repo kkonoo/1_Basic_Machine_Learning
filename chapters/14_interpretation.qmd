@@ -1,0 +1,778 @@
+---
+title: "W14. 모델 해석과 보고"
+description: "Variable importance, PDP/ICE, SHAP, 해석 가능한 모델, TRIPOD+AI, 흔한 실수"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W14. 모델 해석과 보고">
+        <meta name="ai-context" content="
+        이 챕터는 학습한 모델을 해석하고 논문으로 보고하는 방법을 다룹니다.
+        진짜 생성 규칙을 아는 모의 임상 코호트를 써서 설명이 진실과 맞는지 확인합니다.
+        결과는 log CRP, 남성에서만 작용하는 나이, BMI의 U자 효과, 약한 혈압 효과로 정해지고,
+        lcrp2는 CRP와 상관 0.937인 대리 변수일 뿐 원인이 아니며 lab_x와 flag는 효과가 없습니다.
+        test AUC는 선형 로지스틱 0.6525, spline 로지스틱 0.7597, spline과 age:sex 상호작용 0.7678,
+        rpart 100개로 만든 random forest 0.7481, 진짜 확률 0.7711입니다.
+        불순도 기반 중요도는 효과 없는 연속형 lab_x에 0.052를 줘서 실제 효과가 있는 male 0.017보다 높습니다.
+        test set의 permutation importance는 lab_x에 0을 줍니다. train set으로 재면 lab_x도 0.0173으로 부풀려집니다.
+        서로 상관된 lcrp와 lcrp2는 하나씩 섞으면 0.0560과 -0.0014인데 함께 섞으면 0.0931입니다.
+        하나를 빼고 다시 학습하면 AUC가 거의 안 변합니다. 다른 하나가 대신하기 때문입니다.
+        PDP는 BMI의 U자를 되찾지만 양 끝을 과소평가합니다.
+        ICE는 PDP가 평균 내 가린 개인차를 보여줍니다. random forest는 나이 효과를 남녀 모두에 비슷하게 퍼뜨렸고
+        age:sex를 넣은 GLM은 여성 0.0065, 남성 0.1378로 진실 0과 0.1229에 가깝습니다.
+        SHAP은 협력 게임의 Shapley 값으로 예측을 feature별 기여로 나누고 합이 예측과 기준값의 차이와 정확히 같습니다.
+        선형 모형에서 SHAP은 beta 곱하기 x에서 평균을 뺀 값과 같습니다.
+        SHAP은 모델을 설명하지 세상을 설명하지 않습니다. 원인이 아닌 lcrp2도 SHAP 기여를 받습니다.
+        해석 가능한 모델이 블랙박스만큼 좋으면 해석 가능한 모델을 써야 합니다.
+        TRIPOD+AI는 2024년 BMJ에 발표된 27개 항목의 보고 지침입니다.
+        외부 코호트에서 AUC는 0.8092로 오히려 높았지만 평균 예측 0.4338 대 실제 0.288로 calibration이 크게 어긋났습니다.
+        test set을 200번 재사용해 고른 모델은 test AUC 0.6166인데 새 데이터에서는 0.5140입니다.
+        전체 데이터로 feature를 고른 뒤 CV하면 순수 잡음에서도 AUC 0.8642가 나오고 fold 안에서 고르면 0.4499입니다.
+        유병률 5퍼센트에서 모두 음성이라고 찍으면 정확도 0.9502입니다.
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   **불순도 기반 중요도와 permutation importance의 차이를 설명하고, 어느 쪽을 언제 믿을지 말할 수 있다**
+-   상관된 feature가 중요도 해석을 어떻게 망가뜨리는지 설명할 수 있다
+-   PDP와 ICE를 그리고, ICE가 PDP보다 나은 상황을 알아볼 수 있다
+-   **SHAP의 정의와 성질을 설명하고, 한 환자의 예측을 feature별 기여로 분해할 수 있다**
+-   "모델을 설명하는 것"과 "세상을 설명하는 것"을 구분할 수 있다
+-   **TRIPOD+AI의 핵심 요구사항을 알고, discrimination과 calibration을 함께 보고할 수 있다**
+-   누수, test set 재사용, 불균형 무시 같은 흔한 실수를 코드로 재현하고 피할 수 있다
+:::
+
+> 🤔 **모델이 "이 환자의 위험을 올린 가장 큰 요인은 CRP"라고 말한다. 그 말을 믿고 CRP를 낮추면 위험이 줄어들까?**
+
+------------------------------------------------------------------------
+
+## 1. 왜 해석하는가 🔍
+
+### 1) 해석의 목적
+
+| 목적 | 질문 | 예 |
+|---|---|---|
+| **디버깅** | 모델이 엉뚱한 것을 배우지 않았나? | 병원 ID·촬영 기기로 질병을 맞히는 모델 |
+| **과학적 발견** | 어떤 변수가 결과와 관련되는가? | 예후 바이오마커 후보 |
+| **신뢰와 규제** | 임상의·심사자가 받아들일 수 있나? | 의료기기 인허가, 논문 심사 |
+| **개인별 설명** | 이 환자는 왜 고위험인가? | 진료 현장의 의사결정 보조 |
+
+### 2) 해석의 분류
+
+-   **Global vs local** — 모델 전체가 무엇에 기대는가 / 이 한 예측은 왜 이렇게 나왔나
+-   **Model-specific vs model-agnostic** — 트리의 불순도 감소처럼 모델 내부를 쓰는가 / 예측 함수만 있으면 어떤 모델에도 쓸 수 있는가
+-   이 챕터의 permutation importance, PDP, ICE, SHAP은 모두 **model-agnostic**입니다 — `predict()`만 있으면 됩니다
+
+### 3) 🧪 실습: 진실을 아는 모의 코호트
+
+설명이 맞는지 확인하려면 **진짜 규칙을 알아야** 합니다. 결과(예: 30일 내 악화)를 다음 규칙으로 만듭니다.
+
+$$\text{logit}\,P(y=1) = -1.3 + 0.9\,(\text{lcrp} - 1) + 0.07\,(\text{age} - 60)\cdot\text{male} + 0.045\,(\text{bmi} - 27)^2 + 0.012\,(\text{sbp} - 130)$$
+
+-   **lcrp** (log CRP) — 선형 효과
+-   **age** — **남성에서만** 효과 (상호작용)
+-   **bmi** — **U자** 효과 (너무 낮아도, 높아도 위험)
+-   **sbp** — 약한 효과
+-   **lcrp2** — 다른 검사법으로 잰 CRP. lcrp와 강하게 상관되지만 **원인이 아닌 대리 변수**
+-   **lab_x**(연속형), **flag**(이진형) — **효과 없음**
+
+```{r}
+#| eval: true
+#| message: false
+library(rpart); library(splines)
+sim_clin <- function(n, seed, shift = 0, age_mu = 60) {
+  set.seed(seed)
+  age   <- rnorm(n, age_mu, 10)
+  male  <- rbinom(n, 1, .5)
+  lcrp  <- rnorm(n, 1, .8)
+  lcrp2 <- lcrp + rnorm(n, 0, .3)                 # 대리 변수 (원인 아님)
+  bmi   <- rnorm(n, 27, 4)
+  sbp   <- rnorm(n, 130, 15)
+  lab_x <- rnorm(n)                               # 효과 없음
+  flag  <- rbinom(n, 1, .5)                       # 효과 없음
+  eta <- -1.3 + shift + 0.9 * (lcrp - 1) + 0.07 * (age - 60) * male +
+         0.045 * (bmi - 27)^2 + 0.012 * (sbp - 130)
+  y <- rbinom(n, 1, plogis(eta))
+  data.frame(age, male, lcrp, lcrp2, bmi, sbp, lab_x, flag, y, p_true = plogis(eta))
+}
+true_eta <- function(d) -1.3 + 0.9 * (d$lcrp - 1) + 0.07 * (d$age - 60) * d$male +
+                         0.045 * (d$bmi - 27)^2 + 0.012 * (d$sbp - 130)
+feats <- c("age", "male", "lcrp", "lcrp2", "bmi", "sbp", "lab_x", "flag")
+tr <- sim_clin(1000, 1); te <- sim_clin(2000, 2)
+c(prevalence_train = round(mean(tr$y), 3), prevalence_test = round(mean(te$y), 3),
+  cor_lcrp_lcrp2 = round(cor(tr$lcrp, tr$lcrp2), 3))
+```
+
+```{r}
+#| eval: true
+auc <- function(p, y) {                          # Mann-Whitney 로 계산한 AUC
+  r <- rank(p); n1 <- sum(y == 1); n0 <- sum(y == 0)
+  (sum(r[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0)
+}
+## 블랙박스 : rpart 100개로 만든 random forest (W9)
+rf_fit <- function(d, feats, ntree = 100, mtry = 6, seed = 1) {
+  set.seed(seed)
+  lapply(seq_len(ntree), function(b) {
+    idx <- sample(nrow(d), replace = TRUE); f <- sample(feats, mtry)
+    rpart(reformulate(f, "y"), data = d[idx, c(f, "y")], method = "anova",
+          control = rpart.control(cp = 0.001, minbucket = 20, xval = 0, maxsurrogate = 0))
+  })
+}
+rf_pred <- function(m, newdata) rowMeans(sapply(m, predict, newdata = newdata))
+rf <- rf_fit(tr, feats)
+pf <- function(d) rf_pred(rf, d)                 # 해석 도구에 넘길 "예측 함수"
+
+m_lin <- glm(y ~ age + male + lcrp + lcrp2 + bmi + sbp + lab_x + flag, data = tr, family = binomial)
+m_spl <- glm(y ~ ns(age, 3) + male + ns(lcrp, 3) + lcrp2 + ns(bmi, 3) + ns(sbp, 3) + lab_x + flag,
+             data = tr, family = binomial)
+m_int <- glm(y ~ ns(age, 3) * male + ns(lcrp, 3) + lcrp2 + ns(bmi, 3) + ns(sbp, 3) + lab_x + flag,
+             data = tr, family = binomial)
+data.frame(model = c("logistic (linear)", "logistic + splines", "logistic + splines + age:sex",
+                     "random forest (100 rpart trees)", "true probability (ceiling)"),
+           test_AUC = round(c(auc(predict(m_lin, te), te$y), auc(predict(m_spl, te), te$y),
+                              auc(predict(m_int, te), te$y), auc(pf(te), te$y),
+                              auc(te$p_true, te$y)), 4))
+```
+
+-   진짜 확률로도 AUC **0.7711**이 상한입니다 (W11의 Bayes 상한)
+-   선형 로지스틱은 U자와 상호작용을 못 잡아 **0.6525**
+-   **random forest(0.7481)가 spline 로지스틱(0.7597)보다 낮습니다.** 5절에서 다시 이야기합니다
+-   이제 random forest를 "블랙박스"로 두고, 해석 도구들이 진실을 얼마나 되찾는지 봅니다
+
+------------------------------------------------------------------------
+
+## 2. Variable importance 📊
+
+### 1) 두 가지 중요도
+
+**불순도 기반 (impurity / Gini / MDI)** — 트리에서 그 변수로 나눌 때 줄어든 불순도(회귀는 SSE)를 모든 split·모든 트리에 걸쳐 합친 것. **학습 데이터로** 계산되고 공짜로 나옵니다.
+
+**Permutation importance** — **test set에서** 그 변수 하나만 무작위로 섞었을 때 성능이 얼마나 떨어지는가.
+
+$$\text{PI}_j = \text{AUC}(\text{원래}) - \text{AUC}(x_j \text{를 섞은 데이터})$$
+
+섞으면 $x_j$ 와 $y$ 의 관계가 끊어지므로, 모델이 $x_j$ 에 기대고 있었다면 성능이 떨어집니다.
+
+### 2) 🧪 실습: 효과 없는 변수를 누가 잡아내나
+
+```{r}
+#| eval: true
+imp_impurity <- sapply(feats, function(v) sum(sapply(rf, function(t)
+  if (v %in% names(t$variable.importance)) t$variable.importance[[v]] else 0)))
+imp_impurity <- imp_impurity / sum(imp_impurity)                 # 비율로
+
+perm_imp <- function(pred_fun, d, feats, R = 5, seed = 1, groups = NULL) {
+  set.seed(seed); base <- auc(pred_fun(d), d$y)
+  items <- if (is.null(groups)) as.list(feats) else groups
+  sapply(items, function(g) mean(replicate(R, {
+    dp <- d; idx <- sample(nrow(d)); dp[g] <- d[idx, g, drop = FALSE]   # g 만 섞는다
+    base - auc(pred_fun(dp), d$y)
+  })))
+}
+pi_test  <- perm_imp(pf, te, feats)
+pi_train <- perm_imp(pf, tr, feats)
+imp_tab <- data.frame(feature = feats,
+  true_effect = c("yes (male only)", "yes (via age)", "yes", "no (proxy)", "yes (U-shape)",
+                  "yes (weak)", "no", "no"),
+  impurity_share = round(imp_impurity, 3),
+  perm_AUC_drop_test = round(pi_test, 4), perm_AUC_drop_train = round(pi_train, 4),
+  row.names = NULL)
+imp_tab
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.6
+#| fig-height: 3.4
+#| message: false
+library(ggplot2)
+eff <- ifelse(feats %in% c("lcrp2", "lab_x", "flag"), "no causal effect", "has effect")
+il <- rbind(data.frame(feature = feats, v = imp_impurity, what = "impurity share (train)", eff = eff),
+            data.frame(feature = feats, v = pi_test, what = "permutation AUC drop (test)", eff = eff))
+il$what <- factor(il$what, levels = c("impurity share (train)", "permutation AUC drop (test)"))
+il$feature <- factor(il$feature, levels = rev(feats))
+ggplot(il, aes(v, feature, fill = eff)) + geom_col(width = .7) +
+  facet_wrap(~ what, scales = "free_x") +
+  scale_fill_manual(values = c("has effect" = "#2e8b7a", "no causal effect" = "#d1495b")) +
+  labs(x = NULL, y = NULL, fill = NULL) + theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   효과 없는 연속형 **lab_x가 불순도 중요도 0.052**를 받아, 실제 효과가 있는 **male(0.017)보다 높습니다**
+-   같은 "효과 없음"인 이진형 **flag는 0.005** — 연속형은 나눌 지점이 수백 개라 **우연히 좋아 보이는 split을 찾을 기회가 많기 때문**입니다 (Strobl et al. 2007)
+-   test set의 permutation importance는 lab_x **0.0000**, flag **-0.0001** — 정확히 걸러냅니다
+-   ⚠️ **train set으로 permutation importance를 재면 lab_x도 0.0173**. 모델이 학습 데이터의 잡음까지 외운 만큼 부풀려집니다. **반드시 test(또는 OOB) 데이터로**
+-   male의 중요도가 작게 나오는 것은 male이 **age를 통해서만** 작용하기 때문입니다 — 중요도는 상호작용을 한 변수에 깔끔하게 배분하지 못합니다
+
+### 3) 🧪 실습: 상관된 변수의 함정
+
+lcrp와 lcrp2는 상관 0.937. 모델은 둘 중 아무거나 써도 됩니다.
+
+```{r}
+#| eval: true
+grp <- perm_imp(pf, te, feats, groups = list("lcrp", "lcrp2", c("lcrp", "lcrp2")))
+base_auc <- auc(pf(te), te$y)
+drop_refit <- sapply(list("lcrp", "lcrp2", c("lcrp", "lcrp2")), function(g)
+  base_auc - auc(rf_pred(rf_fit(tr, setdiff(feats, g)), te), te$y))
+data.frame(what = c("lcrp", "lcrp2", "lcrp + lcrp2 together"),
+           permute_AUC_drop = round(grp, 4), drop_and_refit_AUC_drop = round(drop_refit, 4))
+```
+
+-   **하나씩 섞으면** lcrp 0.0560, lcrp2 -0.0014. **함께 섞으면 0.0931** — 둘의 합보다 훨씬 큽니다
+-   **빼고 다시 학습**(drop-column)하면 어느 하나를 빼도 AUC가 거의 안 변합니다(0.0043, -0.0026). **다른 하나가 대신하기 때문**입니다. 둘 다 빼야 0.0493
+-   ⚠️ 그러니 "lcrp를 빼도 성능이 같으니 CRP는 중요하지 않다"도, "lcrp2의 permutation importance가 0이니 무의미하다"도 틀린 결론입니다
+-   ⚠️ 또 하나를 섞으면 **"CRP는 높은데 hs-CRP는 낮은" 현실에 없는 환자**가 만들어집니다. 모델은 그런 데이터를 본 적이 없으므로 그 예측은 **외삽**입니다
+-   ✅ 대처 — 상관된 변수는 **묶어서(grouped)** 섞거나, 조건부(conditional) permutation을 쓰거나, 분석 전에 대표 변수 하나만 남기기
+
+------------------------------------------------------------------------
+
+## 3. Partial dependence와 ICE 📈
+
+### 1) 정의
+
+**PDP (Partial Dependence Plot)** — 관심 변수 $x_S$ 를 $v$ 로 **모든 샘플에 똑같이 고정**하고 예측을 평균
+
+$$\hat{f}_S(v) = \frac{1}{n}\sum_{i=1}^{n}\hat{f}(v, \mathbf{x}_{i,C})$$
+
+**ICE (Individual Conditional Expectation)** — 평균 내기 전의 **샘플별 곡선** $\hat{f}(v, \mathbf{x}_{i,C})$. PDP는 ICE 곡선들의 평균입니다.
+
+### 2) 🧪 실습: PDP는 U자를 되찾는가
+
+```{r}
+#| eval: true
+pdp <- function(pred_fun, d, var, grid) sapply(grid, function(g) { d[[var]] <- g; mean(pred_fun(d)) })
+g_bmi   <- seq(18, 36, by = 1)
+pdp_rf  <- pdp(pf, te, "bmi", g_bmi)
+pdp_tru <- pdp(function(d) plogis(true_eta(d)), te, "bmi", g_bmi)   # 진짜 모형의 PDP
+round(data.frame(bmi = g_bmi, random_forest = pdp_rf, truth = pdp_tru)[c(1, 5, 10, 15, 19), ], 3)
+c(argmin_rf = g_bmi[which.min(pdp_rf)], argmin_truth = g_bmi[which.min(pdp_tru)],
+  cor_rf_truth = round(cor(pdp_rf, pdp_tru), 3))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6
+#| fig-height: 3.4
+pl <- rbind(data.frame(bmi = g_bmi, p = pdp_rf,  src = "random forest PDP"),
+            data.frame(bmi = g_bmi, p = pdp_tru, src = "true model PDP"))
+ggplot(pl, aes(bmi, p, colour = src, linetype = src)) +
+  geom_rug(data = te, aes(x = bmi), inherit.aes = FALSE, alpha = .08, sides = "b") +
+  geom_line(linewidth = 1) +
+  scale_colour_manual(values = c("random forest PDP" = "#d1495b", "true model PDP" = "#7d8597")) +
+  scale_linetype_manual(values = c("random forest PDP" = 1, "true model PDP" = 2)) +
+  labs(x = "BMI", y = "average predicted risk", colour = NULL, linetype = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   random forest의 PDP가 **U자를 되찾습니다** (최저점 BMI 25 vs 진짜 27, 곡선 상관 0.955)
+-   다만 **양 끝을 과소평가**합니다 — BMI 18에서 0.683 vs 진짜 0.891. 아래 rug처럼 **양 끝에는 데이터가 거의 없어** 트리가 평평하게 끊습니다
+-   ⚠️ PDP는 **데이터가 드문 구간에서 가장 믿기 어렵습니다.** 항상 rug나 히스토그램을 같이 그리세요
+
+### 3) 🧪 실습: PDP가 가린 것 — ICE
+
+```{r}
+#| eval: true
+set.seed(5); ice_idx <- sample(nrow(te), 150)
+g_age <- seq(40, 80, by = 2)
+ice_curves <- function(pred_fun) sapply(g_age, function(g) { d <- te[ice_idx, ]; d$age <- g; pred_fun(d) })
+ice_rf  <- ice_curves(pf)
+ice_glm <- ice_curves(function(d) predict(m_int, d, type = "response"))
+ice_tru <- ice_curves(function(d) plogis(true_eta(d)))
+sx <- te$male[ice_idx]
+slope10 <- function(M) 10 * apply(M, 1, function(r) coef(lm(r ~ g_age))[2])   # 10년당 위험 변화
+data.frame(model = c("random forest", "GLM splines + age:sex", "truth"),
+           female = round(c(mean(slope10(ice_rf)[sx == 0]), mean(slope10(ice_glm)[sx == 0]),
+                            mean(slope10(ice_tru)[sx == 0])), 4),
+           male   = round(c(mean(slope10(ice_rf)[sx == 1]), mean(slope10(ice_glm)[sx == 1]),
+                            mean(slope10(ice_tru)[sx == 1])), 4),
+           PDP_all = round(c(10 * coef(lm(colMeans(ice_rf) ~ g_age))[2],
+                             10 * coef(lm(colMeans(ice_glm) ~ g_age))[2],
+                             10 * coef(lm(colMeans(ice_tru) ~ g_age))[2]), 4))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.6
+#| fig-height: 3.4
+ic <- rbind(
+  data.frame(id = rep(seq_along(ice_idx), length(g_age)), age = rep(g_age, each = length(ice_idx)),
+             p = as.vector(ice_rf),  sex = rep(ifelse(sx == 1, "male", "female"), length(g_age)),
+             model = "random forest"),
+  data.frame(id = rep(seq_along(ice_idx), length(g_age)), age = rep(g_age, each = length(ice_idx)),
+             p = as.vector(ice_glm), sex = rep(ifelse(sx == 1, "male", "female"), length(g_age)),
+             model = "GLM splines + age:sex"))
+ic$model <- factor(ic$model, levels = c("random forest", "GLM splines + age:sex"))
+pd <- aggregate(p ~ age + model, data = ic, FUN = mean)
+ggplot(ic, aes(age, p)) +
+  geom_line(aes(group = id, colour = sex), alpha = .25, linewidth = .35) +
+  geom_line(data = pd, colour = "black", linewidth = 1.1) +
+  facet_wrap(~ model) +
+  scale_colour_manual(values = c(female = "#2e8b7a", male = "#d1495b")) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1, linewidth = 1))) +
+  labs(x = "age (set for every patient)", y = "predicted risk", colour = NULL,
+       caption = "thin lines = ICE (one patient each); thick = PDP (their average)") +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   진실은 **여성 0, 남성 +0.1229** (10년당 위험 증가)
+-   age:sex를 넣은 GLM의 ICE는 **여성 0.0065, 남성 0.1378** — 두 무리가 뚜렷이 갈립니다(오른쪽 그림)
+-   random forest는 **여성 0.0496, 남성 0.0669** — 나이 효과를 남녀에게 **비슷하게 퍼뜨렸습니다**. 트리가 이 매끄러운 상호작용을 제대로 배우지 못한 것입니다
+-   ✅ **PDP 하나만 보면 둘 다 "나이가 들수록 위험 증가"로 보입니다.** ICE를 그려야 "누구에게"가 보입니다
+-   ⚠️ 그리고 **ICE가 보여주는 것은 모델이 배운 것이지 진실이 아닙니다.** random forest의 ICE를 보고 "여성도 나이 효과가 있다"고 쓰면 틀립니다
+
+### 4) PDP의 가정과 ALE
+
+PDP는 $x_S$ 를 바꿀 때 나머지 변수가 **그대로라고** 가정합니다. 변수끼리 상관되어 있으면 "BMI 18인데 체중은 100 kg" 같은 **존재하지 않는 조합**에서 예측을 평균하게 됩니다.
+
+**ALE (Accumulated Local Effects)** 는 $x_S$ 의 작은 구간 안에 **실제로 있는 샘플만** 써서 예측의 국소 변화량을 누적합니다. 상관된 변수가 있을 때 PDP 대신 권장됩니다 (Apley & Zhu 2020, R `ALEPlot`/`iml`).
+
+------------------------------------------------------------------------
+
+## 4. SHAP 🧮
+
+### 1) Shapley value
+
+협력 게임 이론에서 온 개념입니다. feature들이 "팀"이 되어 예측값을 만들었을 때, **각자의 공헌을 공정하게 나누는** 방법.
+
+$$\phi_j = \sum_{S \subseteq F \setminus \{j\}} \frac{|S|!\,(|F|-|S|-1)!}{|F|!}\Big[v(S \cup \{j\}) - v(S)\Big]$$
+
+$v(S)$ = feature 집합 $S$ 만 "알고" 나머지는 배경 데이터로 채웠을 때의 예측. 즉 **$j$ 가 들어오기 전후의 예측 차이를, 모든 가능한 등장 순서에 대해 평균**한 것입니다.
+
+**네 가지 성질** — 이 성질을 모두 만족하는 분배 방법은 Shapley value 하나뿐입니다
+
+-   **Efficiency** — $\sum_j \phi_j = f(\mathbf{x}) - \mathbb{E}[f(\mathbf{X})]$. 기여의 합이 정확히 "평균 대비 이 예측의 차이"
+-   **Symmetry** — 같은 기여를 하는 두 feature는 같은 값
+-   **Dummy** — 예측에 아무 영향이 없는 feature는 0
+-   **Additivity** — 모델 두 개의 합을 설명하면 각 설명의 합
+
+### 2) 🧪 실습: 순열 샘플링으로 구현하기
+
+모든 부분집합($2^p$)을 다 도는 대신, **무작위 순서**를 뽑아 feature를 하나씩 배경값에서 실제값으로 바꿔 가며 예측이 얼마나 변하는지 잽니다 (Štrumbelj & Kononenko 2014).
+
+```{r}
+#| eval: true
+shap_perm <- function(pred_fun, x, bg, feats, M = 200) {
+  p <- length(feats); rows <- vector("list", M); perms <- matrix(0L, M, p)
+  for (m in 1:M) {
+    z <- bg[sample(nrow(bg), 1), feats]; pi <- sample(p); perms[m, ] <- pi
+    h <- z[rep(1, p + 1), ]                                # 배경 샘플에서 출발
+    for (k in 1:p) h[(k + 1):(p + 1), feats[pi[k]]] <- x[[feats[pi[k]]]]   # 순서대로 x 값으로 교체
+    rows[[m]] <- h
+  }
+  f <- matrix(pred_fun(do.call(rbind, rows)), p + 1)       # 한 번에 예측 : (p+1) x M
+  phi <- setNames(numeric(p), feats)
+  for (m in 1:M) phi[feats[perms[m, ]]] <- phi[feats[perms[m, ]]] + diff(f[, m])
+  list(phi = phi / M, f_x = f[p + 1, 1], base = mean(f[1, ]))
+}
+```
+
+**검증** — 선형 모형(log-odds 척도)에서 Shapley value는 닫힌 해가 있습니다: $\phi_j = \beta_j\,(x_j - \mathbb{E}[x_j])$.
+
+```{r}
+#| eval: true
+set.seed(6); bg <- tr[sample(nrow(tr), 200), ]            # 배경(기준) 데이터
+set.seed(7)
+s_lin  <- shap_perm(function(d) predict(m_lin, d), te[1, ], bg, feats, M = 2000)
+closed <- coef(m_lin)[feats] * (unlist(te[1, feats]) - colMeans(bg[feats]))
+round(rbind(permutation_sampling = s_lin$phi, closed_form = closed), 4)
+c(max_abs_diff = signif(max(abs(s_lin$phi - closed)), 3))
+```
+
+-   순열 2000개로 닫힌 해와 **몬테카를로 오차 수준에서** 일치합니다
+-   ✅ 선형 모형에서 SHAP은 "계수 × 평균에서 벗어난 정도"일 뿐입니다. SHAP은 이것을 **아무 모델에나** 일반화한 것입니다
+
+### 3) 🧪 실습: 한 환자의 예측 뜯어보기 (local)
+
+```{r}
+#| eval: true
+ip <- which.max(pf(te[1:200, ]))                           # 처음 200명 중 가장 위험한 환자
+set.seed(8)
+s1 <- shap_perm(pf, te[ip, ], bg, feats, M = 300)
+te[ip, feats]
+c(prediction = round(s1$f_x, 4), base = round(s1$base, 4),
+  base_plus_sum_phi = round(s1$base + sum(s1$phi), 4))
+round(sort(s1$phi, decreasing = TRUE), 4)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6
+#| fig-height: 3.2
+sl <- data.frame(feature = names(s1$phi), phi = s1$phi,
+                 val = sapply(names(s1$phi), function(v) format(round(te[ip, v], 1))))
+sl$label <- paste0(sl$feature, " = ", sl$val)
+sl$label <- factor(sl$label, levels = sl$label[order(sl$phi)])
+ggplot(sl, aes(phi, label, fill = phi > 0)) + geom_col(width = .7) +
+  geom_vline(xintercept = 0, colour = "grey40") +
+  scale_fill_manual(values = c("TRUE" = "#d1495b", "FALSE" = "#2e8b7a"), guide = "none") +
+  labs(x = "SHAP value (change in predicted risk)", y = NULL,
+       caption = paste0("base ", round(s1$base, 3), " + sum of SHAP = prediction ", round(s1$f_x, 3))) +
+  theme_minimal()
+```
+
+-   이 환자의 예측 위험은 **0.795**, 배경 평균은 0.3754 — 그 차이를 feature별로 나눈 것이 SHAP입니다
+-   기준값 + SHAP 합 = 예측이 **정확히** 맞습니다 (efficiency)
+-   가장 큰 기여는 CRP가 아니라 **BMI 18.3**(저체중)입니다. U자의 왼쪽 끝이 이 환자의 위험을 끌어올렸습니다
+-   ✅ 전역 중요도로는 알 수 없는 **"이 환자는 왜?"**에 답하는 것이 local 설명입니다
+
+### 4) 🧪 실습: 전역 요약 — 100명의 SHAP
+
+```{r}
+#| eval: true
+set.seed(9)
+ex <- sample(nrow(te), 100)
+S  <- t(sapply(ex, function(i) shap_perm(pf, te[i, ], bg, feats, M = 100)$phi))
+data.frame(feature = feats,
+           mean_abs_SHAP = round(colMeans(abs(S)), 4),
+           perm_AUC_drop_test = round(pi_test, 4),
+           true_effect = imp_tab$true_effect, row.names = NULL)[order(-colMeans(abs(S))), ]
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7
+#| fig-height: 3.8
+bs <- do.call(rbind, lapply(feats, function(v) data.frame(feature = v, phi = S[, v],
+          val = rank(te[ex, v]) / length(ex))))                 # 색 = feature 값의 상대 순위
+bs$feature <- factor(bs$feature, levels = feats[order(colMeans(abs(S)))])
+set.seed(10)
+ggplot(bs, aes(phi, feature, colour = val)) +
+  geom_vline(xintercept = 0, colour = "grey60") +
+  geom_jitter(height = .18, width = 0, size = 1) +
+  scale_colour_gradient(low = "#2e8b7a", high = "#d1495b", breaks = c(.1, .9), labels = c("low", "high")) +
+  labs(x = "SHAP value (change in predicted risk)", y = NULL, colour = "feature\nvalue") +
+  theme_minimal()
+```
+
+-   평균 |SHAP| 순위(bmi → lcrp → age)가 permutation importance와 대체로 같습니다
+-   **bmi 줄에서는 빨강(높음)과 청록(낮음)이 모두 오른쪽**에 있습니다 — U자. 평균 |SHAP| 하나로는 이 모양이 안 보입니다
+-   ⚠️ **lcrp2는 원인이 아닌데도 평균 |SHAP|이 0이 아닙니다.** 모델이 lcrp2를 **쓰고 있기** 때문입니다
+-   ✅ **SHAP은 모델을 설명하지, 세상을 설명하지 않습니다.** "SHAP 값이 크다 = 그 변수를 바꾸면 결과가 바뀐다"는 인과적 해석은 틀릴 수 있습니다
+
+### 5) SHAP 사용 시 주의
+
+| 함정 | 설명 |
+|---|---|
+| **인과가 아님** | 대리 변수·교란 변수도 큰 SHAP을 받습니다 (lcrp2) |
+| **상관된 feature** | 기본(interventional) SHAP은 feature를 **독립적으로** 바꿔 넣어 존재하지 않는 조합을 만듭니다. 조건부(observational) SHAP은 신용이 상관된 변수로 번져 나갑니다. **어느 쪽을 썼는지 적을 것** |
+| **척도** | 확률 척도냐 log-odds 척도냐에 따라 순위가 달라질 수 있습니다 |
+| **배경 데이터** | "평균적인 환자"를 누구로 정하느냐(train 전체? 대조군?)에 따라 값이 바뀝니다 |
+| **계산량** | 정확한 계산은 $2^p$. 트리 모델은 TreeSHAP(`xgboost`, `shap`)이 빠르고 정확합니다 |
+
+**LIME** — 설명하려는 점 **주변에 표본을 흩뿌리고**, 그 근처에서만 맞는 **단순한 선형 모형**을 적합해 계수를 설명으로 씁니다. 빠르고 직관적이지만 이웃의 범위(kernel 폭)에 따라 설명이 크게 흔들려서, 현재는 SHAP이 더 널리 쓰입니다.
+
+------------------------------------------------------------------------
+
+## 5. 해석 가능한 모델 vs 사후 설명 ⚖️
+
+Rudin(2019)의 주장 — **고위험 의사결정에서는 블랙박스를 설명하려 하지 말고, 처음부터 해석 가능한 모델을 쓰라.**
+
+1절의 결과를 다시 보면
+
+| 모델 | test AUC | 해석 |
+|---|---|---|
+| random forest | 0.7481 | 사후 설명(SHAP, PDP) 필요. 나이×성별 상호작용을 제대로 못 배움 |
+| logistic + splines | 0.7597 | 각 변수의 효과 곡선을 **그대로 그릴 수 있음** |
+| logistic + splines + age:sex | **0.7678** | 상호작용까지 계수로 보임. ICE가 진실과 일치 |
+
+-   이 데이터에서는 **해석 가능한 모델이 블랙박스보다 낫습니다.** 표 형태의 임상 데이터에서 드문 일이 아닙니다 — 복잡한 모델의 이득은 대개 작습니다 (Christodoulou et al. 2019)
+-   사후 설명은 **근사**입니다. SHAP·PDP가 보여주는 것이 모델이 실제로 하는 일과 어긋날 수 있습니다
+-   ✅ **순서** — 먼저 해석 가능한 모델(정규화 GLM + spline, 얕은 트리, GAM)로 기준선을 세우고, 블랙박스가 **의미 있게** 나을 때만 블랙박스 + 사후 설명으로 갑니다
+-   영상·서열·단일세포처럼 feature가 원시 신호이고 수가 매우 많을 때는 해석 가능한 모델만으로 부족할 수 있습니다. 그때가 사후 설명이 필요한 자리입니다
+
+------------------------------------------------------------------------
+
+## 6. 보고 지침 📋
+
+### 1) TRIPOD+AI
+
+-   **TRIPOD**(2015)는 예측 모형 개발·검증 연구의 보고 지침입니다. **TRIPOD+AI**(Collins et al., *BMJ* 2024)는 회귀와 머신러닝을 모두 포괄하도록 개정된 **27개 항목** 체크리스트이고, 초록용 체크리스트가 따로 있습니다
+-   임상 예측 모형 논문을 투고하면 많은 저널이 이 체크리스트 제출을 요구합니다
+
+이 과목과 직접 연결되는 핵심 요구사항을 추리면
+
+| 영역 | 보고할 것 | 이 과목 |
+|---|---|---|
+| **데이터** | 출처, 기간, 포함·제외 기준, 결측 처리, 표본 크기의 근거 | W2 |
+| **결과 정의** | 무엇을 언제 어떻게 판정했는지, 예측변수 측정과 눈가림 | — |
+| **분석** | 전처리, 모델·초매개변수 선택, **내부 검증 방법**(CV, bootstrap) | W2, W3 |
+| **불균형** | 재표본(over/undersampling, SMOTE) 여부와 방법 | W6 |
+| **성능** | **discrimination과 calibration을 함께**, 신뢰구간 포함 | W4 |
+| **공정성** | 성별·연령 등 **하위집단별 성능** | — |
+| **해석** | 설명 방법을 썼다면 무엇을 어떻게 | W14 |
+| **공개(open science)** | 프로토콜, **데이터·코드 공개**, 모델 자체의 공개 | W14 |
+| **환자·대중 참여** | 연구 설계·해석에 환자가 참여했는지 | — |
+
+### 2) 🧪 실습: AUC만 보고하면 놓치는 것 — 외부 검증
+
+다른 병원 코호트를 만듭니다. **더 고령이고(평균 68세) 기저 위험이 낮습니다**.
+
+```{r}
+#| eval: true
+ext <- sim_clin(2000, 3, shift = -0.8, age_mu = 68)
+cal <- function(p, y) {                                   # discrimination + calibration
+  lp <- qlogis(pmin(pmax(p, 1e-6), 1 - 1e-6))
+  c(AUC = auc(p, y), Brier = mean((p - y)^2),
+    cal_intercept = unname(coef(glm(y ~ 1, offset = lp, family = binomial))[1]),  # 0 이 이상적
+    cal_slope = unname(coef(glm(y ~ lp, family = binomial))[2]),                 # 1 이 이상적
+    mean_pred = mean(p), observed = mean(y))
+}
+p_glm_te <- predict(m_int, te, type = "response"); p_glm_ex <- predict(m_int, ext, type = "response")
+p_rf_te  <- pf(te);                                 p_rf_ex  <- pf(ext)
+cbind(data.frame(model = rep(c("GLM splines + age:sex", "random forest"), 2),
+                 cohort = rep(c("internal test", "external"), each = 2)),
+      round(rbind(cal(p_glm_te, te$y), cal(p_rf_te, te$y), cal(p_glm_ex, ext$y), cal(p_rf_ex, ext$y)), 4))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.6
+#| fig-height: 3.6
+calbin <- function(p, y, model, cohort) {
+  b <- cut(p, quantile(p, 0:10 / 10), include.lowest = TRUE)
+  data.frame(pred = tapply(p, b, mean), obs = tapply(y, b, mean), model = model, cohort = cohort)
+}
+cb <- rbind(calbin(p_glm_te, te$y, "GLM splines + age:sex", "internal test"),
+            calbin(p_rf_te,  te$y, "random forest",         "internal test"),
+            calbin(p_glm_ex, ext$y, "GLM splines + age:sex", "external"),
+            calbin(p_rf_ex,  ext$y, "random forest",         "external"))
+cb$cohort <- factor(cb$cohort, levels = c("internal test", "external"))
+ggplot(cb, aes(pred, obs, colour = model)) +
+  geom_abline(linetype = 2, colour = "grey50") +
+  geom_line(linewidth = .8) + geom_point(size = 1.8) +
+  facet_wrap(~ cohort) + coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  scale_colour_manual(values = c("GLM splines + age:sex" = "#2e8b7a", "random forest" = "#d1495b")) +
+  labs(x = "mean predicted risk (decile)", y = "observed event rate", colour = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   외부 코호트에서 **AUC는 오히려 올랐습니다**(GLM 0.7678 → 0.8092). 고령 환자가 섞여 위험의 폭이 넓어졌기 때문입니다
+-   그런데 **평균 예측 0.4338 vs 실제 0.288** — 모든 환자의 위험을 부풀립니다. calibration intercept **-0.9244**(이상적으로 0)
+-   AUC만 보고했다면 "외부에서도 잘 된다"고 결론 내렸을 것입니다. 이 모델로 "위험 40% 이상은 입원"을 정하면 **불필요한 입원이 쏟아집니다**
+-   내부 test에서도 두 모델의 calibration slope가 다릅니다(GLM 0.8517: 약간 과적합, RF 1.0898: 예측이 너무 보수적)
+-   ✅ **discrimination(AUC)은 순서를, calibration은 숫자 자체를 봅니다.** 확률을 임상적으로 쓸 거면 둘 다 필요합니다 (W4)
+-   ✅ 외부 검증에서 calibration이 어긋나면 **재보정(recalibration)** — intercept(과 slope)만 새 코호트에 맞추는 것으로 대부분 해결됩니다
+
+### 3) 외부 검증의 의미
+
+| 검증 | 데이터 | 답하는 질문 |
+|---|---|---|
+| **내부** (CV, bootstrap, 분할) | 같은 출처 | 과적합 없이 **이 모집단에서** 작동하는가 |
+| **시간적** | 같은 병원, 나중 시기 | 시간이 지나도 작동하는가 |
+| **지리적 / 외부** | 다른 병원·국가 | **다른 모집단에** 옮겨 쓸 수 있는가 |
+
+⚠️ 무작위로 나눈 test set은 **외부 검증이 아닙니다.** 같은 병원 데이터를 7:3으로 나눈 것은 내부 검증입니다.
+
+### 4) 🧪 실습: 재현성 — 버전과 seed를 남긴다
+
+```{r}
+#| eval: true
+R.version.string
+sapply(c("rpart", "splines", "ggplot2"), function(p) as.character(packageVersion(p)))
+```
+
+-   논문의 Methods나 보충자료에 **R/Python 버전, 패키지 버전, seed**를 적고, 코드는 GitHub + Zenodo DOI로 공개하세요
+-   `sessionInfo()`(R), `pip freeze`(Python), `renv.lock` / `environment.yml`을 저장소에 같이 두면 재현이 쉬워집니다 (Ch0)
+-   이 사이트가 GitHub Actions에서 **매번 처음부터 다시 렌더링**되는 것도 같은 이유입니다 — 코드가 실제로 돌아가는지 기계가 매번 확인합니다
+
+------------------------------------------------------------------------
+
+## 7. 흔한 실수 체크리스트 🚨
+
+### 1) 🧪 실습: test set을 여러 번 쓰면
+
+**신호가 전혀 없는** 데이터로 후보 모형 200개를 만들고, test AUC가 가장 높은 것을 고릅니다.
+
+```{r}
+#| eval: true
+set.seed(11)
+n <- 150; p <- 30
+Xtr <- matrix(rnorm(n * p), n, p);      ytr <- rbinom(n, 1, .5)       # 신호 없음
+Xte <- matrix(rnorm(n * p), n, p);      yte <- rbinom(n, 1, .5)
+Xnew <- matrix(rnorm(2000 * p), 2000, p); ynew <- rbinom(2000, 1, .5)   # 새 데이터
+cand <- lapply(1:200, function(k) sample(p, 5))                         # feature 5개짜리 후보 200개
+fits <- lapply(cand, function(f) glm(ytr ~ Xtr[, f], family = binomial))
+score <- function(fit, f, X) as.vector(cbind(1, X[, f]) %*% coef(fit))
+auc_te <- mapply(function(fit, f) auc(score(fit, f, Xte), yte), fits, cand)
+best <- which.max(auc_te)
+data.frame(what = c("best of 200, judged on the reused test set", "that same model on fresh data",
+                    "median of the 200 on the test set"),
+           AUC = round(c(auc_te[best], auc(score(fits[[best]], cand[[best]], Xnew), ynew),
+                         median(auc_te)), 4))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6
+#| fig-height: 3
+ggplot(data.frame(a = auc_te), aes(a)) +
+  geom_histogram(bins = 30, fill = "#7d8597", colour = "white") +
+  geom_vline(xintercept = auc_te[best], colour = "#d1495b", linewidth = 1) +
+  geom_vline(xintercept = auc(score(fits[[best]], cand[[best]], Xnew), ynew), colour = "#2e8b7a",
+             linewidth = 1, linetype = 2) +
+  labs(x = "test AUC of 200 useless models", y = "count",
+       caption = "red = chosen model on the reused test set; teal dashed = same model on fresh data") +
+  theme_minimal()
+```
+
+-   아무 신호가 없는데도 200개 중 가장 좋은 것은 test AUC **0.6166**. 새 데이터에서는 **0.5140**
+-   "test set에서 제일 좋은 것을 골라 test 성능을 보고"하면 **선택 자체가 과적합**입니다. 모델·feature·초매개변수를 여러 번 바꿔 보는 모든 과정이 여기에 해당합니다
+-   ✅ test set은 **마지막에 한 번만**. 선택은 CV나 별도 validation set으로 (W3의 nested CV)
+
+### 2) 🧪 실습: CV 밖에서 feature를 고르면
+
+순수 잡음 2000개, 샘플 100개. 결과와 가장 관련 있어 보이는 10개를 골라 로지스틱 회귀.
+
+```{r}
+#| eval: true
+set.seed(12)
+n <- 100; p <- 2000
+X <- matrix(rnorm(n * p), n, p); y <- rbinom(n, 1, .5)                  # 신호 없음
+tstat <- function(X, y) abs(colMeans(X[y == 1, ]) - colMeans(X[y == 0, ])) /
+  sqrt(apply(X[y == 1, ], 2, var) / sum(y == 1) + apply(X[y == 0, ], 2, var) / sum(y == 0))
+fold <- sample(rep(1:5, length.out = n))
+cv_auc <- function(select_inside) {
+  pr <- numeric(n); top_all <- order(tstat(X, y), decreasing = TRUE)[1:10]
+  for (f in 1:5) {
+    tri <- fold != f
+    top <- if (select_inside) order(tstat(X[tri, ], y[tri]), decreasing = TRUE)[1:10] else top_all
+    g <- suppressWarnings(glm(y[tri] ~ X[tri, top], family = binomial))
+    pr[!tri] <- cbind(1, X[!tri, top]) %*% coef(g)
+  }
+  auc(pr, y)
+}
+data.frame(pipeline = c("select top 10 on ALL data, then 5-fold CV", "select inside each training fold"),
+           CV_AUC = round(c(cv_auc(FALSE), cv_auc(TRUE)), 4))
+```
+
+-   전체 데이터로 고르고 CV하면 **AUC 0.8642** — 잡음으로 논문 한 편이 나옵니다
+-   fold 안에서 고르면 **0.4499**, 즉 동전 던지기 수준. 이것이 진실입니다
+-   ✅ **feature 선택·정규화·결측 대치·재표본까지 모든 전처리는 fold 안에서** (W2). 오믹스 바이오마커 논문에서 가장 흔한 오류입니다
+
+### 3) 🧪 실습: 불균형을 무시하면
+
+유병률을 약 5%로 낮춘 같은 코호트입니다.
+
+```{r}
+#| eval: true
+rtr <- sim_clin(3000, 21, shift = -3.2); rte <- sim_clin(5000, 22, shift = -3.2)
+mr <- glm(y ~ ns(age, 3) * male + ns(lcrp, 3) + ns(bmi, 3) + ns(sbp, 3), data = rtr, family = binomial)
+pr <- predict(mr, rte, type = "response")
+avg_prec <- function(p, y) { o <- order(p, decreasing = TRUE); y <- y[o]; mean((cumsum(y) / seq_along(y))[y == 1]) }
+sens <- function(pred, y) sum(pred == 1 & y == 1) / sum(y == 1)
+c(prevalence_test = round(mean(rte$y), 4))
+data.frame(classifier = c("always predict 0", "GLM, threshold 0.5", "GLM, threshold = prevalence"),
+           accuracy = round(c(mean(rte$y == 0), mean((pr > .5) == rte$y), mean((pr > mean(rtr$y)) == rte$y)), 4),
+           sensitivity = round(c(0, sens(as.integer(pr > .5), rte$y), sens(as.integer(pr > mean(rtr$y)), rte$y)), 4),
+           AUC = c("0.5", rep(format(round(auc(pr, rte$y), 4)), 2)),
+           PR_AUC = c(format(round(mean(rte$y), 4)), rep(format(round(avg_prec(pr, rte$y), 4)), 2)))
+```
+
+-   **"모두 음성"이라고 찍기만 해도 정확도 0.9502** — 모델(0.9538)과 거의 같습니다
+-   임계값 0.5를 그대로 쓰면 환자의 **16%만** 잡습니다. 유병률 근처로 낮추면 정확도는 0.7770으로 떨어지지만 민감도 **0.6867**
+-   PR-AUC의 기준선은 0.5가 아니라 **유병률(0.0498)**입니다. 모델의 0.3586은 낮아 보이지만 기준선보다 훨씬 높습니다 — 기준선을 같이 보고해야 의미가 있습니다
+-   ✅ 불균형 데이터에서는 **정확도를 주 지표로 쓰지 말고**, AUC와 PR-AUC, 임상적으로 정한 임계값에서의 민감도·특이도를 보고 (W4, W6)
+
+### 4) 체크리스트
+
+| 단계 | 확인할 것 | 챕터 |
+|---|---|---|
+| 설계 | 결과 정의·예측 시점이 명확한가? 예측 시점 **이후** 정보가 feature에 섞이지 않았나? | W2 |
+| 분할 | 같은 환자·같은 배치가 train과 test에 동시에 있지 않나? (group split) | W3 |
+| 전처리 | 정규화·대치·feature 선택·재표본이 **모두 fold 안**인가? | W2, W6 |
+| 선택 | test set을 모델 선택에 쓰지 않았나? 초매개변수는 nested CV로 골랐나? | W3 |
+| 지표 | AUC **와** calibration, 불균형이면 PR-AUC까지, **신뢰구간**과 함께 | W4 |
+| 기준선 | 단순한 모델(로지스틱)과 비교했나? 복잡한 모델의 이득이 의미 있는가? | W5, W14 |
+| 해석 | 중요도는 test 데이터로? 상관된 변수를 고려했나? 인과적 표현을 피했나? | W14 |
+| 검증 | 외부(다른 병원·시기) 검증이 있나? 하위집단별 성능은? | W14 |
+| 공개 | 코드·seed·버전·(가능하면) 데이터와 모델을 공개했나? | W14 |
+
+------------------------------------------------------------------------
+
+::: {.callout-warning}
+## ⚠️ 해석 결과를 논문에 쓸 때
+
+-   **"X가 결과의 원인이다" 대신 "모델은 X에 가장 크게 의존했다"**라고 쓰세요. 중요도·SHAP은 연관이지 인과가 아닙니다
+-   **불순도 기반 중요도만 보고하지 말 것** — 연속형·다범주 변수에 편향되어 있습니다. test 데이터의 permutation importance나 SHAP을 함께
+-   **상관된 변수 묶음**은 개별이 아니라 **묶음으로** 해석하고, 그렇게 했다고 적을 것
+-   SHAP을 썼다면 **배경 데이터, 척도(확률/log-odds), interventional/conditional 여부**를 명시
+-   PDP에는 **데이터 분포(rug)를 같이** 그리고, 데이터가 드문 구간의 모양은 해석하지 말 것
+-   해석 가능한 모델과 **성능을 나란히 보고**하세요. 블랙박스를 쓴 이유가 성능이라면 그 차이를 숫자로 보여야 합니다
+:::
+
+::: {.callout-important}
+## Where this ends up
+
+-   permutation importance와 W9 random forest의 OOB importance는 같은 발상입니다
+-   calibration과 Brier score → W4, class imbalance와 재표본 → W6
+-   누수와 fold 안의 전처리 → W2, nested CV와 test set 한 번만 → W3
+-   Bayes 상한(진짜 확률의 AUC 0.7711) → W11
+-   **W15 프로젝트** — 이 챕터의 체크리스트를 그대로 제출물 평가 기준으로 씁니다. "검증 설계의 타당성 > 최종 성능 수치"
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   해석은 **디버깅, 과학적 발견, 신뢰, 개인별 설명**을 위해 합니다. 진짜 규칙을 아는 모의 데이터로 설명 도구를 검증했습니다
+-   **불순도 중요도는 효과 없는 연속형 변수(lab_x 0.052)를 실제 효과가 있는 변수(male 0.017)보다 높게** 봅니다. test set의 permutation importance는 0.0000
+-   permutation importance를 **train으로 재면** 잡음 변수도 0.0173으로 부풀려집니다
+-   **상관된 변수** — 하나씩 섞으면 lcrp 0.0560 / lcrp2 -0.0014, 함께 섞으면 0.0931. 하나를 빼고 재학습하면 다른 하나가 대신해 거의 0
+-   **PDP**는 BMI의 U자를 되찾지만(상관 0.955) 데이터가 드문 양 끝을 과소평가합니다(0.683 vs 0.891)
+-   **ICE**는 PDP가 가린 개인차를 보여줍니다. age:sex GLM은 여성 0.0065 / 남성 0.1378(진실 0 / 0.1229), random forest는 0.0496 / 0.0669로 효과를 퍼뜨렸습니다 — **ICE는 모델이 배운 것을 보여줍니다**
+-   **SHAP** — Shapley value로 예측을 기여로 분해. efficiency로 기준값 + 합 = 예측. 선형 모형에서는 $\beta_j(x_j - \bar{x}_j)$ 와 일치
+-   한 환자(예측 0.795)의 가장 큰 기여는 CRP가 아니라 **BMI 18.3** — local 설명의 가치
+-   **SHAP은 모델을 설명하지 세상을 설명하지 않습니다** — 원인이 아닌 lcrp2도 기여를 받습니다
+-   이 데이터에서 **해석 가능한 GLM(0.7678)이 random forest(0.7481)보다 낫습니다.** 해석 가능한 모델로 기준선을 먼저
+-   **TRIPOD+AI** — 27개 항목(BMJ 2024). discrimination과 calibration, 공정성, 코드·데이터 공개
+-   외부 코호트에서 **AUC는 0.8092로 올랐지만 평균 예측 0.4338 vs 실제 0.288** — AUC만 보고하면 놓칩니다
+-   test set 재사용 — 쓸모없는 200개 중 최고가 0.6166, 새 데이터에서 0.5140
+-   CV 밖 feature 선택 — 순수 잡음으로 **0.8642**, 제대로 하면 0.4499
+-   유병률 5%에서 "모두 음성"의 정확도 **0.9502**. PR-AUC 기준선은 유병률
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Global / local 설명** | 모델 전체의 행동 / 한 예측의 이유 |
+| **Model-agnostic** | 예측 함수만으로 동작하는 설명 방법 |
+| **Impurity importance (MDI)** | 트리 split의 불순도 감소 합. 연속형·다범주에 편향 |
+| **Permutation importance** | test에서 변수를 섞었을 때 성능 감소 |
+| **Drop-column importance** | 변수를 빼고 재학습했을 때 성능 감소 |
+| **PDP** | 변수를 모든 샘플에 고정했을 때 평균 예측 |
+| **ICE** | PDP의 샘플별 곡선. 이질성·상호작용을 보여줌 |
+| **ALE** | 실제 데이터 근처의 국소 변화 누적. 상관에 강함 |
+| **Shapley value / SHAP** | 모든 등장 순서에 대한 한계 기여의 평균 |
+| **Efficiency** | $\sum\phi_j = f(\mathbf{x}) - \mathbb{E}f$ |
+| **LIME** | 국소 선형 대리 모형으로 설명 |
+| **Calibration intercept / slope** | 예측 확률 수준의 치우침 / 퍼짐 (0과 1이 이상적) |
+| **External validation** | 다른 시기·기관 데이터에서의 검증 |
+| **TRIPOD+AI** | 임상 예측 모형 보고 지침, 27개 항목 (2024) |
+
+## ➕ References
+
+-   Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. *BMJ* 2024;385:e078378.
+-   Collins GS, Reitsma JB, Altman DG, Moons KGM. Transparent reporting of a multivariable prediction model for individual prognosis or diagnosis (TRIPOD). *BMJ* 2015;350:g7594.
+-   Breiman L. Random forests. *Machine Learning* 2001;45:5–32.
+-   Strobl C, Boulesteix AL, Zeileis A, Hothorn T. Bias in random forest variable importance measures: illustrations, sources and a solution. *BMC Bioinformatics* 2007;8:25.
+-   Hooker G, Mentch L, Zhou S. Unrestricted permutation forces extrapolation: variable importance requires at least one more model, or there is no free variable importance. *Statistics and Computing* 2021;31:82.
+-   Friedman JH. Greedy function approximation: a gradient boosting machine. *Annals of Statistics* 2001;29(5):1189–1232.
+-   Goldstein A, Kapelner A, Bleich J, Pitkin E. Peeking inside the black box: visualizing statistical learning with plots of individual conditional expectation. *J Comput Graph Stat* 2015;24(1):44–65.
+-   Apley DW, Zhu J. Visualizing the effects of predictor variables in black box supervised learning models. *JRSS-B* 2020;82(4):1059–1086.
+-   Lundberg SM, Lee SI. A unified approach to interpreting model predictions. *NeurIPS 2017*.
+-   Štrumbelj E, Kononenko I. Explaining prediction models and individual predictions with feature contributions. *Knowledge and Information Systems* 2014;41:647–665.
+-   Ribeiro MT, Singh S, Guestrin C. "Why should I trust you?": explaining the predictions of any classifier. *KDD 2016*:1135–1144.
+-   Rudin C. Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead. *Nature Machine Intelligence* 2019;1:206–215.
+-   Christodoulou E, Ma J, Collins GS, et al. A systematic review shows no performance benefit of machine learning over logistic regression for clinical prediction models. *J Clin Epidemiol* 2019;110:12–22.
+-   Van Calster B, McLernon DJ, van Smeden M, et al. Calibration: the Achilles heel of predictive analytics. *BMC Medicine* 2019;17:230.
+-   Kapoor S, Narayanan A. Leakage and the reproducibility crisis in machine-learning-based science. *Patterns* 2023;4(9):100804.
+-   Molnar C. *Interpretable Machine Learning*, 2nd ed. 2022. christophm.github.io/interpretable-ml-book
+
+------------------------------------------------------------------------
+
+[← W13. Dimension Reduction](13_dimension_reduction.qmd)

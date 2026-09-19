@@ -1,0 +1,990 @@
+---
+title: "W13. Dimension Reduction"
+description: "차원의 저주, kNN, PCA, kernel PCA, 매니폴드 학습, 척도 학습, t-SNE/UMAP, NMF"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W13. Dimension Reduction">
+        <meta name="ai-context" content="
+        이 챕터는 고차원 데이터를 저차원으로 줄이는 방법을 다룹니다.
+        차원이 커지면 가장 가까운 점과 가장 먼 점의 거리 비가 1에 가까워집니다.
+        실습에서 2차원일 때 0.034였던 비가 1000차원에서 0.891이 됩니다.
+        데이터 10퍼센트를 담는 이웃 상자의 한 변은 10차원에서 0.794, 100차원에서 0.977입니다.
+        kNN은 학습 없이 예측 때 가까운 k개로 투표하는 lazy learning입니다.
+        label 잡음이 15퍼센트인 데이터에서 k=1은 train 1.0, test 0.756이고 k=9에서 15 사이가 가장 좋습니다.
+        정보 없는 차원을 100개 더하면 kNN 정확도가 0.9625에서 0.5015로 떨어져 다수 class만 찍는 0.6215보다 못합니다.
+        PCA는 feature를 고르는 것이 아니라 분산을 가장 많이 담는 선형결합을 새로 만드는 것입니다.
+        원점을 지나는 직선을 돌리면 투영된 제곱합과 수직거리 제곱합의 합이 항상 일정하므로
+        투영 분산 최대화와 수직거리 최소화는 같은 문제입니다. 이 직선은 회귀직선과 다릅니다.
+        공분산의 고유분해, 중심화한 데이터의 SVD, prcomp가 모두 같은 답을 줍니다.
+        숨은 요인 3개를 가진 발현 모사 데이터에서 permutation 기반 parallel analysis는 PC 3개만 잡음 위로 봅니다.
+        그런데 누적 90퍼센트 규칙을 쓰면 100개 중 73개 PC가 필요합니다.
+        표준화하지 않으면 분산이 큰 무의미한 유전자 5개가 PC1부터 PC5를 차지합니다.
+        PCA는 class 정보를 모르므로 class 차이가 분산이 작은 축에 있으면 PC1로는 정확도 0.49,
+        LDA의 LD1로는 0.925입니다.
+        kernel PCA는 동심원 두 개를 sigma 1의 RBF kernel로 선형분리 가능하게 만듭니다. 선형 PCA는 0.513입니다.
+        classical MDS는 Euclidean 거리에서 PCA와 같습니다.
+        Isomap은 kNN 그래프의 최단경로로 측지 거리를 재서 swiss roll을 펼칩니다.
+        k가 6이면 거리 보존 상관 0.998인데 k를 8로 올리면 층 사이 short-circuit이 생겨 0.72로 무너집니다.
+        척도 학습은 거리를 데이터로 학습합니다. 정보 없는 차원이 40개일 때 표준화는 도움이 안 되지만
+        Fisher 가중 거리는 kNN 정확도를 0.80에서 0.918로 올립니다.
+        t-SNE는 국소 이웃을 보존하지만 군집 크기와 군집 간 거리는 보존하지 않습니다.
+        실제로 5배 넓게 퍼진 군집이 perplexity 30의 t-SNE에서는 1.56배로 보입니다.
+        UMAP도 같은 함정을 가집니다.
+        NMF는 비음수 행렬을 비음수 W와 H로 분해해 부분 기반의 해석 가능한 성분을 줍니다.
+        유전자 프로그램 3개 모사에서 NMF 성분은 각 프로그램과 상관 0.97 이상이고 PCA는 0.72에서 0.91이며 loading의 55퍼센트가 음수입니다.
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   **차원의 저주가 거리와 부피에 어떤 일을 하는지 수치로 설명할 수 있다**
+-   kNN의 $k$ 선택과 잡음 차원에 대한 취약성을 설명할 수 있다
+-   **PCA의 기하학적 의미(투영 분산 최대 = 수직거리 최소)를 설명하고, 고유분해·SVD와 연결할 수 있다**
+-   PC 개수를 정하는 기준들의 차이를 알고, 스케일링이 결과를 바꾸는 이유를 말할 수 있다
+-   PCA와 LDA, kernel PCA, Isomap·LLE가 각각 무엇을 보존하는지 비교할 수 있다
+-   **t-SNE/UMAP 그림에서 읽어도 되는 것과 읽으면 안 되는 것을 구분할 수 있다**
+-   NMF가 PCA보다 해석하기 쉬운 이유를 설명할 수 있다
+:::
+
+> 🤔 **유전자 2만 개를 2차원 그림 한 장으로 줄였다. 그 그림에서 두 군집이 멀리 떨어져 있다면, 실제로도 멀까?**
+
+------------------------------------------------------------------------
+
+## 1. 차원의 저주 🌌
+
+### 1) 고차원에서 벌어지는 일
+
+-   군집화(W12), kNN(2절), 커널(W10) — 모두 **거리**를 씁니다
+-   feature가 많아지면 공간이 **텅 비고**(샘플 밀도 ↓), **모든 점 사이의 거리가 비슷해집니다**
+-   "가장 가까운 이웃"이 더 이상 가깝지 않습니다 → 거리에 기댄 모든 방법이 흔들립니다
+
+### 2) 🧪 실습: 거리가 모두 비슷해진다
+
+```{r}
+#| eval: true
+set.seed(1)
+do.call(rbind, lapply(c(2, 10, 100, 1000), function(d) {
+  X  <- matrix(runif(500 * d), 500, d)                 # [0,1]^d 안의 균일한 점 500개
+  q  <- runif(d)                                       # 질의점 하나
+  dd <- sqrt(colSums((t(X) - q)^2))
+  data.frame(d = d, nearest = round(min(dd), 3), farthest = round(max(dd), 3),
+             ratio_near_far = round(min(dd) / max(dd), 3),
+             relative_contrast = round((max(dd) - min(dd)) / min(dd), 3))
+}))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.6
+#| fig-height: 2.8
+#| message: false
+library(ggplot2)
+set.seed(2)
+hd <- do.call(rbind, lapply(c(2, 10, 100, 1000), function(d) {
+  dv <- as.vector(dist(matrix(runif(200 * d), 200, d)))
+  data.frame(r = dv / mean(dv), d = paste0("d = ", d))
+}))
+hd$d <- factor(hd$d, levels = paste0("d = ", c(2, 10, 100, 1000)))
+ggplot(hd, aes(r)) +
+  geom_histogram(bins = 50, fill = "#2e8b7a", colour = "white", linewidth = .1) +
+  facet_wrap(~ d, nrow = 1, scales = "free_y") +
+  labs(x = "pairwise distance / mean distance", y = NULL) + theme_minimal()
+```
+
+-   2차원에서 가장 가까운 점은 가장 먼 점의 **3.4%** 거리. 1000차원에서는 **89.1%** — 사실상 모두 같은 거리입니다
+-   그림에서 차원이 커질수록 쌍별 거리의 분포가 **평균 근처로 좁게 몰립니다**
+
+### 3) 🧪 실습: 부피는 어디에 있나
+
+```{r}
+#| eval: true
+ball_in_cube <- function(d, r = 0.5) pi^(d/2) * r^d / gamma(d/2 + 1)   # 내접구 부피
+dims <- c(1, 2, 3, 5, 10, 20, 100)
+data.frame(d = dims,
+           ball_volume_in_unit_cube = signif(sapply(dims, ball_in_cube), 3),
+           edge_to_capture_10pct = round(0.1^(1/dims), 3))              # 이웃 상자의 한 변
+```
+
+-   단위 정육면체에 내접한 공의 부피가 20차원에서 **$2.46 \times 10^{-8}$** — 부피는 거의 전부 **모서리**에 있습니다
+-   데이터의 10%만 담는 "이웃"을 만들려면 한 변이 10차원에서 **0.794**, 100차원에서 **0.977** — 전체 범위의 대부분을 덮어야 합니다. **국소(local)라는 개념이 무너집니다**
+
+### 4) 그래서 차원 축소
+
+원자료의 그림처럼, 3차원 공간에 흩어진 점들이 실제로는 **2차원 곡면 위**에 놓여 있는 경우가 많습니다. 고차원 속성 공간을 **저차원 부분공간에 embedding**하면 샘플 밀도가 올라가고 거리 계산이 다시 의미를 갖습니다.
+
+✅ 유전자 발현도 마찬가지입니다. 2만 개 유전자가 독립적으로 움직이지 않고 **몇 개의 생물학적 프로그램**(세포 유형, 세포주기, 스트레스 반응)에 묶여 움직이기 때문에 차원 축소가 가능합니다.
+
+------------------------------------------------------------------------
+
+## 2. k-Nearest Neighbors 👥 `[보강 — 원자료에 제목만 있음]`
+
+### 1) 가장 게으른 학습
+
+-   **학습 단계가 없습니다**(lazy learning). 훈련 데이터를 저장해 두었다가, 새 샘플이 오면 **가장 가까운 $k$ 개의 label로 투표**(분류) 또는 **평균**(회귀)
+-   모델이 가정하는 것은 "가까운 점은 비슷하다"뿐 — 결정경계가 자유롭습니다
+-   대가 — **예측이 느리고**($n$ 개와 모두 거리 계산), **거리의 질에 전적으로 의존**합니다
+-   W12의 그래프 기반 군집, t-SNE, UMAP, Isomap이 모두 **kNN 그래프에서 출발**합니다
+
+### 2) 🧪 실습: $k$ 는 bias–variance 손잡이
+
+반지름 안쪽/바깥쪽을 가르는 원형 경계에 **label 잡음 15%**를 넣었습니다(최선이 약 0.85).
+
+```{r}
+#| eval: true
+#| message: false
+library(class)
+make_ring <- function(n, q, seed, flip = 0) {         # q = 정보 없는 차원 수, flip = label 잡음
+  set.seed(seed)
+  X <- matrix(runif(n * 2, -1, 1), n, 2)
+  y <- ifelse(rowSums(X^2) < 0.5, "in", "out")
+  if (flip > 0) { f <- runif(n) < flip; y[f] <- ifelse(y[f] == "in", "out", "in") }
+  if (q > 0) X <- cbind(X, matrix(runif(n * q, -1, 1), n, q))
+  list(X = X, y = factor(y, levels = c("in", "out")))
+}
+tr <- make_ring(300, 0, 10, flip = .15); te <- make_ring(2000, 0, 20, flip = .15)
+set.seed(3); fold <- sample(rep(1:10, length.out = 300))
+kres <- do.call(rbind, lapply(c(1, 3, 5, 9, 15, 25, 51, 101), function(k) {
+  cv <- mean(sapply(1:10, function(f) mean(knn(tr$X[fold != f, ], tr$X[fold == f, ],
+                                               tr$y[fold != f], k = k) == tr$y[fold == f])))
+  data.frame(k = k, train_acc = round(mean(knn(tr$X, tr$X, tr$y, k = k) == tr$y), 4),
+             cv_acc = round(cv, 4), test_acc = round(mean(knn(tr$X, te$X, tr$y, k = k) == te$y), 4))
+}))
+kres
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6
+#| fig-height: 3.4
+kl <- rbind(data.frame(k = kres$k, acc = kres$train_acc, set = "train"),
+            data.frame(k = kres$k, acc = kres$cv_acc,    set = "10-fold CV"),
+            data.frame(k = kres$k, acc = kres$test_acc,  set = "test"))
+kl$set <- factor(kl$set, levels = c("train", "10-fold CV", "test"))
+ggplot(kl, aes(k, acc, colour = set)) +
+  geom_line(linewidth = .9) + geom_point(size = 1.8) + scale_x_log10(breaks = kres$k) +
+  scale_colour_manual(values = c("train" = "#d1495b", "10-fold CV" = "#2e8b7a", "test" = "#7d8597")) +
+  labs(x = "k (log scale)", y = "accuracy", colour = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   $k = 1$ 은 train **1.0000**(자기 자신이 이웃), test **0.7560** — 잡음까지 외운 과적합
+-   $k = 9$~15에서 CV 0.8367로 최고, test 0.8075~0.8080 — 최선(약 0.85)에 가깝습니다
+-   $k = 101$ 은 경계를 뭉개 test 0.6725 — 과소적합
+-   ✅ 작은 $k$ = 낮은 bias·높은 variance, 큰 $k$ = 그 반대. **CV로 고릅니다** (W3)
+
+### 3) 🧪 실습: 거리 가중 kNN
+
+가까운 이웃에 더 큰 표를 줍니다 ($w = 1/d$).
+
+```{r}
+#| eval: true
+wknn <- function(Xtr, Xte, ytr, k) {
+  D <- sqrt(pmax(outer(rowSums(Xte^2), rowSums(Xtr^2), "+") - 2 * Xte %*% t(Xtr), 0))
+  lev <- levels(ytr)
+  factor(lev[apply(D, 1, function(d) {
+    o <- order(d)[1:k]; w <- 1 / (d[o] + 1e-8)
+    which.max(tapply(w, factor(ytr[o], levels = lev), sum))
+  })], levels = lev)
+}
+do.call(rbind, lapply(c(5, 25, 101), function(k) data.frame(k = k,
+  uniform  = round(mean(knn(tr$X, te$X, tr$y, k = k) == te$y), 4),
+  weighted = round(mean(wknn(tr$X, te$X, tr$y, k) == te$y), 4))))
+```
+
+-   $k$ 가 적당할 때(5, 25)는 차이가 거의 없고(0.7960 vs 0.7875, 0.8060 vs 0.8085)
+-   $k = 101$ 처럼 **너무 클 때 가중이 0.6725 → 0.7980으로 구해 줍니다** — 먼 이웃의 목소리를 줄이니까요
+-   ✅ 가중은 "$k$ 를 잘못 골랐을 때의 보험"에 가깝습니다
+
+### 4) 🧪 실습: 잡음 차원이 kNN을 무너뜨린다
+
+같은 원형 데이터(잡음 label 없음)에 **아무 정보 없는 차원**을 붙여 봅니다.
+
+```{r}
+#| eval: true
+do.call(rbind, lapply(c(0, 2, 5, 10, 20, 50, 100), function(q) {
+  a <- make_ring(300, q, 10 + q); b <- make_ring(2000, q, 20 + q)
+  data.frame(noise_dims = q,
+             knn_all_dims = round(mean(knn(a$X, b$X, a$y, k = 7) == b$y), 4),
+             knn_2_informative = round(mean(knn(a$X[, 1:2], b$X[, 1:2], a$y, k = 7) == b$y), 4))
+}))
+c(majority_class_rate = round(max(table(make_ring(2000, 0, 20)$y)) / 2000, 4))
+```
+
+-   정보 있는 2차원만 쓰면 항상 0.95 안팎인데, 잡음 차원 100개를 붙이면 **0.9625 → 0.5015**
+-   **다수 class만 찍어도 0.6215**인데 그보다 못합니다. 이웃이 사실상 무작위가 되었기 때문입니다
+-   ✅ kNN(과 모든 거리 기반 방법)을 쓰기 전에 **차원 축소 또는 feature 선택**이 필요한 이유입니다. 7절에서 "어떤 차원이 중요한가"를 거리 자체에 학습시킵니다
+
+------------------------------------------------------------------------
+
+## 3. Embedding 🗺️ `[보강 — 원자료에 제목만 있음]`
+
+**Embedding** = 고차원 점 $\mathbf{x}_i \in \mathbb{R}^d$ 를 저차원 점 $\mathbf{z}_i \in \mathbb{R}^{d'}$ ($d' \ll d$)로 옮기되, **무언가를 보존**하는 것. 방법마다 보존하려는 것이 다르고, 그것이 곧 그 방법의 성격입니다.
+
+| 방법 | 보존하려는 것 | 선형? | 절 |
+|---|---|---|---|
+| **PCA** | 분산 (= 전역 Euclidean 구조) | 선형 | 4 |
+| **LDA** | class 간 분리 | 선형, 지도 | 4 |
+| **Kernel PCA** | kernel 공간의 분산 | 비선형 | 5 |
+| **MDS** | 쌍별 거리 | 선형(classical) | 6 |
+| **Isomap** | 측지(geodesic) 거리 | 비선형 | 6 |
+| **LLE** | 이웃으로 자기를 재구성하는 가중치 | 비선형 | 6 |
+| **t-SNE / UMAP** | 이웃 확률 / 이웃 그래프 | 비선형 | 8 |
+| **NMF** | 비음수 부분의 합 | 선형, 비음수 | 9 |
+
+✅ **"어떤 방법이 더 좋은가"가 아니라 "무엇을 보존하고 싶은가"를 먼저 정하세요.**
+
+------------------------------------------------------------------------
+
+## 4. PCA (Principal Component Analysis) 📐
+
+### 1) 개요
+
+-   데이터의 **변동(variability)을 가장 잘 설명하는 방향**을 차례로 찾습니다
+-   2~3차원으로 줄여 **시각화**, 잡음이 많은 뒤쪽 성분을 버려 **잡음 제거**, 뒤이은 분석의 **전처리**(W12의 군집화)
+
+::: {.callout-note}
+## 원자료 표현 정정 — "가장 중요한 feature 몇 개만 선택"
+
+PCA는 기존 feature 중 몇 개를 **고르는(selection)** 방법이 아닙니다. 모든 feature의 **선형결합으로 새 축을 만드는(extraction)** 방법입니다. PC1에는 모든 유전자가 조금씩(loading만큼) 들어 있습니다. feature를 실제로 고르고 싶다면 W6의 Lasso 같은 방법이 맞습니다.
+:::
+
+### 2) 과정 (원자료 ①~⑧)
+
+1.  데이터의 중심(각 feature의 평균)을 구하고 ② 원점으로 옮깁니다 — 상대 위치는 그대로
+2.  ③ 원점을 지나는 직선을 하나 긋고 ④ **데이터에 가장 잘 맞도록** 돌립니다 → PC1
+3.  ⑤ 그 직선의 방향을 **길이 1인 벡터**(eigenvector, loading)로 나타냅니다
+4.  ⑥ PC1에 **수직이면서** 남은 변동을 가장 잘 설명하는 직선 → PC2 (이후 반복)
+5.  ⑦ PC축이 가로·세로가 되도록 회전하면 각 점의 새 좌표(score)가 나옵니다 ⑧
+
+⑤의 원자료 예시 — 기울기 1/4인 직선은 방향 $(4, 1)$, 길이 $\sqrt{17} = 4.12$ 이므로 단위벡터는 $(4/4.12,\; 1/4.12) = (0.97,\; 0.243)$ 입니다.
+
+### 3) 🧪 실습: 직선을 돌려 보기 — "가장 잘 맞는다"는 무슨 뜻인가
+
+```{r}
+#| eval: true
+set.seed(41)
+z  <- rnorm(40)
+X2 <- cbind(x1 = 2.0 * z + rnorm(40, 0, .6), x2 = 0.9 * z + rnorm(40, 0, .6))
+Xc <- scale(X2, scale = FALSE)                               # ① ② 중심을 원점으로
+ang <- (0:179) * pi / 180                                    # ③ 원점을 지나는 직선을 1도씩 돌린다
+ss <- t(sapply(ang, function(a) {
+  proj <- Xc %*% c(cos(a), sin(a))
+  c(SS_projected = sum(proj^2), SS_perpendicular = sum(Xc^2) - sum(proj^2))
+}))
+ev <- eigen(cov(Xc))
+c(best_angle_grid = which.max(ss[, 1]) - 1,
+  PC1_angle_eigen = round((atan2(ev$vectors[2, 1], ev$vectors[1, 1]) * 180 / pi) %% 180, 2))
+c(total_SS = round(sum(Xc^2), 3), max_SS_projected = round(max(ss[, 1]), 3),
+  min_SS_perpendicular = round(min(ss[, 2]), 3))
+round(c(u1 = 4, u2 = 1) / sqrt(17), 3)                     # 원자료 ⑤: 기울기 1/4 직선의 단위벡터
+```
+
+```{r}
+#| eval: true
+c(slope_PC1 = round(ev$vectors[2, 1] / ev$vectors[1, 1], 4),
+  slope_lm_x2_on_x1 = round(unname(coef(lm(x2 ~ x1, data = as.data.frame(Xc)))[2]), 4),
+  slope_lm_x1_on_x2_inverted = round(1 / unname(coef(lm(x1 ~ x2, data = as.data.frame(Xc)))[2]), 4))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.6
+par(mfrow = c(1, 2), mar = c(4.2, 4.2, 2.5, 1))
+plot(Xc, pch = 16, col = "#7d8597", asp = 1, xlab = "x1 (centered)", ylab = "x2 (centered)",
+     main = "PC1 vs regression line", cex.main = .95)
+abline(0, ev$vectors[2, 1] / ev$vectors[1, 1], col = "#d1495b", lwd = 2)
+abline(0, coef(lm(x2 ~ x1, data = as.data.frame(Xc)))[2], col = "#2e8b7a", lwd = 2, lty = 2)
+legend("topleft", c("PC1", "lm(x2 ~ x1)"), col = c("#d1495b", "#2e8b7a"), lty = c(1, 2), lwd = 2, bty = "n", cex = .85)
+matplot(0:179, ss, type = "l", lty = 1, lwd = 2, col = c("#d1495b", "#2e8b7a"),
+        ylim = c(0, max(ss) * 1.45), xlab = "angle of the line (degree)", ylab = "sum of squares",
+        main = "projected + perpendicular = constant", cex.main = .95)
+abline(v = which.max(ss[, 1]) - 1, lty = 3, col = "grey40")
+legend("topright", c("SS projected", "SS perpendicular"), col = c("#d1495b", "#2e8b7a"), lwd = 2,
+       bty = "n", cex = .8)
+```
+
+-   직선을 돌리면 **투영된 제곱합**과 **수직거리 제곱합**이 시소처럼 움직이고, 둘의 합은 항상 총 제곱합(251.705)입니다 — 피타고라스
+-   그래서 **"투영 분산 최대화" = "수직거리 최소화"**. 격자로 찾은 25°와 고유벡터의 24.73°가 일치합니다
+-   ⚠️ 원자료 ④의 "점과 직선의 거리가 최소 = MSE"는 **수직(perpendicular) 거리**입니다. 회귀의 MSE는 **세로(y 방향) 거리**라서 다른 직선이 나옵니다 — 기울기 PC1 **0.4605** vs 회귀 **0.4213**
+-   ✅ 회귀는 "x로 y를 예측", PCA는 "x와 y를 대칭으로 요약". 두 변수 중 어느 쪽도 원인이 아닐 때 PCA가 맞는 선입니다
+
+### 4) 고유분해와 SVD
+
+중심화한 데이터 행렬 $\mathbf{X}_c$ ($n \times p$)에 대해
+
+$$\mathbf{S} = \frac{1}{n-1}\mathbf{X}_c^{\mathsf{T}}\mathbf{X}_c = \mathbf{V}\boldsymbol{\Lambda}\mathbf{V}^{\mathsf{T}}, \qquad
+\mathbf{X}_c = \mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf{T}}, \qquad \lambda_k = \frac{d_k^2}{n-1}$$
+
+-   $\mathbf{V}$ 의 열 = **loading** (PC 방향), $\mathbf{X}_c\mathbf{V} = \mathbf{U}\mathbf{D}$ = **score** (새 좌표), $\lambda_k$ = PC$k$ 의 분산
+-   $p \gg n$ 인 오믹스에서는 $p \times p$ 공분산을 만들지 않는 **SVD가 표준**입니다 (`prcomp`도 SVD)
+
+```{r}
+#| eval: true
+sim_expr <- function(n = 100, p = 500, seed = 42) {    # 발현 모사: 숨은 요인 3개 + 잡음
+  set.seed(seed)
+  F <- cbind(f1 = rnorm(n), f2 = rnorm(n), f3 = rnorm(n))
+  L <- matrix(0, 3, p)
+  L[1, 1:60]    <- rnorm(60, 1.2, .2)                  # 요인마다 영향을 받는 유전자 집합
+  L[2, 61:110]  <- rnorm(50, 0.9, .2)
+  L[3, 111:140] <- rnorm(30, 0.8, .2)
+  X <- F %*% L + matrix(rnorm(n * p), n, p); colnames(X) <- paste0("g", 1:p)
+  list(X = X, F = F)
+}
+ex <- sim_expr(); X <- ex$X
+Xc <- scale(X, scale = FALSE)
+pc <- prcomp(X)
+eg <- eigen(cov(Xc), symmetric = TRUE)
+sv <- svd(Xc)
+round(rbind(eigen_of_cov = eg$values[1:5], prcomp_sdev_sq = pc$sdev[1:5]^2,
+            svd_d_sq_over_n1 = sv$d[1:5]^2 / (nrow(X) - 1)), 4)
+c(max_abs_loading_diff_up_to_sign = signif(max(sapply(1:3, function(k)
+  min(max(abs(eg$vectors[, k] - pc$rotation[, k])), max(abs(eg$vectors[, k] + pc$rotation[, k]))))), 3))
+```
+
+-   세 방법의 고유값이 소수점 넷째 자리까지 같고, loading 차이는 $10^{-15}$ 수준(부호만 다를 수 있음)
+-   ⚠️ **PC의 부호는 임의입니다.** 같은 데이터로 다시 돌려도 PC1이 뒤집힐 수 있으니, 부호에 생물학적 의미를 붙이지 마세요
+
+### 5) 🧪 실습: PC는 몇 개? — scree, 누적 설명분산, parallel analysis
+
+-   **Scree plot** — 각 PC의 분산(또는 비율)을 그려 꺾이는 곳을 봄 (원자료: PC1 15, PC2 3 → 83% / 17%)
+-   **누적 설명분산** — "90%를 설명할 때까지" 같은 규칙
+-   **Parallel analysis** `[신규]` — 각 유전자를 **따로 섞어**(permutation) 상관 구조를 없앤 데이터의 고유값과 비교. 잡음이 만드는 고유값보다 큰 PC만 남김
+
+```{r}
+#| eval: true
+ve <- pc$sdev^2 / sum(pc$sdev^2)
+set.seed(43)
+null_ev <- replicate(20, prcomp(apply(X, 2, sample))$sdev[1:10]^2)   # 유전자마다 따로 섞기
+thr <- apply(null_ev, 1, quantile, .95)
+data.frame(PC = 1:8, eigenvalue = round(pc$sdev[1:8]^2, 3),
+           var_explained = round(ve[1:8], 4), cumulative = round(cumsum(ve)[1:8], 4),
+           null_95pct = round(thr[1:8], 3),
+           above_null = ifelse(pc$sdev[1:8]^2 > thr[1:8], "yes", "no"))
+c(PCs_for_80pct = which(cumsum(ve) >= .8)[1], PCs_for_90pct = which(cumsum(ve) >= .9)[1],
+  total_PCs = length(ve))
+round(abs(cor(pc$x[, 1:4], ex$F)), 3)                  # 각 PC 와 숨은 요인의 상관
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.6
+#| fig-height: 3.2
+sc <- rbind(data.frame(PC = 1:15, v = pc$sdev[1:15]^2, what = "eigenvalue", line = "observed"),
+            data.frame(PC = 1:10, v = thr, what = "eigenvalue", line = "permutation null (95%)"),
+            data.frame(PC = 1:100, v = cumsum(ve), what = "cumulative variance explained", line = "observed"))
+sc$what <- factor(sc$what, levels = c("eigenvalue", "cumulative variance explained"))
+ggplot(sc, aes(PC, v, colour = line, linetype = line)) +
+  geom_line(linewidth = .8) + geom_point(data = subset(sc, what == "eigenvalue"), size = 1.5) +
+  geom_hline(data = data.frame(what = factor("cumulative variance explained", levels = levels(sc$what)),
+                               y = .9), aes(yintercept = y), linetype = 3, colour = "grey40") +
+  facet_wrap(~ what, scales = "free") +
+  scale_colour_manual(values = c("observed" = "#2e8b7a", "permutation null (95%)" = "#d1495b")) +
+  scale_linetype_manual(values = c("observed" = 1, "permutation null (95%)" = 2)) +
+  labs(x = "PC", y = NULL, colour = NULL, linetype = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   Parallel analysis는 **PC 3개만** 잡음 위로 봅니다 — 숨은 요인 3개와 정확히 일치하고, PC1~3이 각각 f1·f2·f3와 상관 0.994 / 0.981 / 0.934
+-   그런데 PC1~3의 누적 설명분산은 **25.2%**뿐입니다. "90% 규칙"을 쓰면 100개 중 **73개**가 필요합니다
+-   ✅ 오믹스처럼 잡음이 많은 고차원 데이터에서 **누적 비율 규칙은 잡음까지 남깁니다.** "몇 %를 설명하나"보다 "**잡음보다 큰가**"를 물어야 합니다
+-   ⚠️ 설명분산이 낮다고 PCA가 실패한 것이 아닙니다. 신호가 있는 유전자가 500개 중 140개뿐이고 나머지는 순수 잡음이기 때문입니다
+
+### 6) 🧪 실습: PCA는 최선의 저차원 근사
+
+PC $k$ 개로 원래 데이터를 복원하면 ($\hat{\mathbf{X}}_k = \mathbf{Z}_k\mathbf{V}_k^{\mathsf{T}}$, 원자료 ⑧), 복원 오차가 정확히 **버린 고유값의 합**입니다.
+
+```{r}
+#| eval: true
+t(sapply(c(1, 2, 3, 5, 10, 20), function(k) {
+  Xk <- pc$x[, 1:k, drop = FALSE] %*% t(pc$rotation[, 1:k, drop = FALSE])
+  c(k = k, relative_reconstruction_error = round(sum((Xc - Xk)^2) / sum(Xc^2), 5),
+    one_minus_cumulative = round(1 - cumsum(ve)[k], 5))
+}))
+```
+
+-   두 열이 모든 $k$ 에서 **같습니다**. 같은 $k$ 차원 선형 부분공간 중 PCA가 복원 오차를 가장 작게 만듭니다(Eckart–Young)
+-   ✅ 그래서 PCA는 **잡음 제거**로도 씁니다 — 잡음 위의 PC만 남기고 복원하면 잡음 성분이 걸러집니다
+
+### 7) 🧪 실습: 스케일링이 PC1을 바꾼다
+
+요인과 **아무 관계없는데 분산만 큰 유전자 5개**(sd 12)를 붙여 봅니다.
+
+```{r}
+#| eval: true
+set.seed(44)
+H  <- matrix(rnorm(nrow(X) * 5, 0, 12), nrow(X), 5); colnames(H) <- paste0("hv", 1:5)
+Xh <- cbind(X, H)
+pu <- prcomp(Xh, scale. = FALSE); ps <- prcomp(Xh, scale. = TRUE)
+data.frame(PCA = c("unscaled", "scaled (each gene sd = 1)"),
+           top_gene_of_PC1 = c(names(which.max(abs(pu$rotation[, 1]))), names(which.max(abs(ps$rotation[, 1])))),
+           abs_cor_PC1_with_f1 = round(c(abs(cor(pu$x[, 1], ex$F[, 1])), abs(cor(ps$x[, 1], ex$F[, 1]))), 3),
+           which_PC_carries_f1 = c(which.max(abs(cor(pu$x[, 1:10], ex$F[, 1]))),
+                                   which.max(abs(cor(ps$x[, 1:10], ex$F[, 1])))))
+sapply(1:6, function(k) names(which.max(abs(pu$rotation[, k]))))   # unscaled PC1..6 의 대표 유전자
+```
+
+-   표준화하지 않으면 **PC1~PC5를 무의미한 유전자 hv1~hv5가 차지**하고, 진짜 요인 f1은 **PC6**으로 밀려납니다
+-   표준화하면 PC1이 다시 f1 (상관 0.99)
+-   ⚠️ 그렇다고 **항상 표준화가 정답은 아닙니다.** 표준화는 순수 잡음 유전자도 신호 유전자와 같은 무게로 올립니다. 실무에서는 **log 변환 → 변동이 큰 유전자(HVG) 선택 → (표준화) → PCA**가 흔한 순서입니다
+
+### 8) 🧪 실습: PCA vs LDA
+
+| | PCA | LDA (W6) |
+|---|---|---|
+| 학습 | **비지도** — class를 모름 | **지도** — class를 알아야 함 |
+| 찾는 축 | 분산이 가장 큰 축 | class 간 분리가 가장 큰 축 |
+| 쓸 때 | 잡음 제거, 시각화, 전처리 | 분류를 위한 차원 축소 |
+
+```{r}
+#| eval: true
+#| message: false
+library(MASS)
+set.seed(45)
+y  <- factor(rep(c("A", "B"), each = 100))
+base <- cbind(rnorm(200, 0, 3), rnorm(200, 0, .5))
+base[, 2] <- base[, 2] + ifelse(y == "A", -.7, .7)        # class 차이는 분산이 "작은" 축에
+Rm <- matrix(c(cos(pi/6), sin(pi/6), -sin(pi/6), cos(pi/6)), 2)
+XL <- base %*% t(Rm)                                       # 30도 기울인다
+pcl <- prcomp(XL); ldl <- lda(XL, y)
+acc1d <- function(s) { g <- glm(y ~ s, family = binomial); mean((fitted(g) > .5) == (y == "B")) }
+data.frame(projection = c("PC1 (unsupervised)", "PC2", "LD1 (supervised)"),
+           var_explained = c(format(round(pcl$sdev^2 / sum(pcl$sdev^2), 4)), "-"),
+           accuracy_on_this_1D_axis = round(c(acc1d(pcl$x[, 1]), acc1d(pcl$x[, 2]),
+                                              acc1d(predict(ldl, XL)$x[, 1])), 4))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.2
+#| fig-height: 2.8
+pj <- rbind(data.frame(s = as.vector(scale(pcl$x[, 1])), class = y, axis = "PC1 (93% of variance)"),
+            data.frame(s = as.vector(scale(predict(ldl, XL)$x[, 1])), class = y, axis = "LD1"))
+pj$axis <- factor(pj$axis, levels = c("PC1 (93% of variance)", "LD1"))
+ggplot(pj, aes(s, fill = class)) +
+  geom_density(alpha = .55, colour = NA) + facet_wrap(~ axis) +
+  scale_fill_manual(values = c(A = "#2e8b7a", B = "#d1495b")) +
+  labs(x = "standardized projection", y = NULL, fill = NULL) + theme_minimal()
+```
+
+-   PC1은 분산의 **93%**를 담지만 class 구분 정확도는 **0.49** — 동전 던지기입니다
+-   class 차이는 분산 7%짜리 **PC2**에 있었고(0.925), LDA는 그 축을 **직접 찾습니다**(0.925)
+-   ⚠️ **"PCA 그림에서 두 그룹이 안 갈리니 차이가 없다"는 결론은 틀릴 수 있습니다.** 큰 분산 = 중요한 차이가 아닙니다. 배치 효과처럼 큰 변동이 생물학적 차이를 가릴 수 있습니다
+
+------------------------------------------------------------------------
+
+## 5. Kernel PCA 🪄 `[보강 — 원자료에 제목만 있음]`
+
+### 1) 아이디어
+
+PCA는 **직선**(선형 부분공간)만 찾습니다. W10의 kernel trick을 그대로 가져와, 고차원 사상 $\phi(\mathbf{x})$ 공간에서 PCA를 하되 **kernel 행렬 $\mathbf{K}$ 만으로** 계산합니다.
+
+1.  $K_{ij} = \kappa(\mathbf{x}_i, \mathbf{x}_j)$, 예: RBF $\exp(-\|\mathbf{x}_i - \mathbf{x}_j\|^2 / 2\sigma^2)$
+2.  **feature 공간에서 중심화**: $\tilde{\mathbf{K}} = \mathbf{K} - \mathbf{1}_n\mathbf{K} - \mathbf{K}\mathbf{1}_n + \mathbf{1}_n\mathbf{K}\mathbf{1}_n$
+3.  $\tilde{\mathbf{K}}$ 의 고유분해 → score = 고유벡터 × $\sqrt{\text{고유값}}$
+
+### 2) 🧪 실습: 동심원 두 개
+
+```{r}
+#| eval: true
+set.seed(51)
+th <- runif(300, 0, 2*pi); rr <- c(rnorm(150, 1, .12), rnorm(150, 2.6, .12))
+Xk <- cbind(rr * cos(th), rr * sin(th)); yk <- factor(rep(c("inner", "outer"), each = 150))
+kpca <- function(X, sigma, k = 2) {
+  K <- exp(-as.matrix(dist(X))^2 / (2 * sigma^2))
+  n <- nrow(K); one <- matrix(1/n, n, n)
+  Kc <- K - one %*% K - K %*% one + one %*% K %*% one      # feature 공간에서 중심화
+  e <- eigen(Kc, symmetric = TRUE)
+  e$vectors[, 1:k] %*% diag(sqrt(pmax(e$values[1:k], 0)))
+}
+lin_sep <- function(E, y) {                                 # 2개 성분 위에서 선형으로 갈리는가
+  d <- data.frame(E, y = y); g <- suppressWarnings(glm(y ~ ., data = d, family = binomial))
+  mean((fitted(g) > .5) == (y == levels(y)[2]))
+}
+do.call(rbind, c(list(data.frame(method = "linear PCA", sigma = "-",
+                                 linear_separability_2comp = round(lin_sep(prcomp(Xk)$x, yk), 4))),
+  lapply(c(0.3, 0.5, 1, 1.5, 3), function(s) data.frame(method = "kernel PCA (RBF)", sigma = format(s),
+    linear_separability_2comp = round(lin_sep(kpca(Xk, s), yk), 4)))))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.2
+#| fig-height: 3.2
+kp1 <- kpca(Xk, 1)
+kd <- rbind(data.frame(a = prcomp(Xk)$x[, 1], b = prcomp(Xk)$x[, 2], ring = yk, m = "linear PCA"),
+            data.frame(a = kp1[, 1], b = kp1[, 2], ring = yk, m = "kernel PCA (RBF, sigma = 1)"))
+kd$m <- factor(kd$m, levels = c("linear PCA", "kernel PCA (RBF, sigma = 1)"))
+ggplot(kd, aes(a, b, colour = ring)) + geom_point(size = 1) + facet_wrap(~ m, scales = "free") +
+  scale_colour_manual(values = c(inner = "#d1495b", outer = "#2e8b7a")) +
+  labs(x = "component 1", y = "component 2", colour = NULL) + theme_minimal()
+```
+
+-   선형 PCA는 **회전만** 할 뿐이라 동심원이 그대로 — 2개 성분으로도 0.513
+-   RBF kernel PCA는 $\sigma = 1$ 에서 두 원을 **선형으로 갈리게** 펼칩니다 (0.9833)
+-   ⚠️ 그러나 $\sigma$ 가 조금만 커져도(1.5 이상) 효과가 사라집니다. W10의 $\gamma$ 처럼 **scale 모수에 매우 민감**하고, 비지도라서 CV로 고를 기준도 마땅치 않습니다
+-   또 새 샘플을 넣으려면 학습 샘플 전체와의 kernel을 계산해야 합니다($n \times n$)
+
+------------------------------------------------------------------------
+
+## 6. Manifold learning 🌀 `[보강 — 원자료에 제목만 있음]`
+
+**Manifold** — 고차원 공간 속에 휘어 있는 저차원 곡면. 원자료 1절 그림의 "3차원 속 2차원 곡면"이 바로 그것입니다. 곡면 위에서는 **직선 거리가 아니라 곡면을 따라 걷는 거리**가 의미 있습니다.
+
+### 1) MDS (Multidimensional Scaling)
+
+쌍별 거리 행렬 $\mathbf{D}$ 만 주어졌을 때, **거리를 최대한 보존**하는 저차원 좌표를 찾습니다. Classical MDS는 $\mathbf{D}$ 를 이중 중심화해 내적 행렬로 바꾼 뒤 고유분해합니다.
+
+```{r}
+#| eval: true
+md <- cmdscale(dist(X), k = 2)                  # 4절 발현 데이터
+c(max_abs_diff_MDS_vs_PCA_up_to_sign = signif(max(abs(abs(md) - abs(pc$x[, 1:2]))), 3))
+```
+
+-   Euclidean 거리를 넣으면 **classical MDS = PCA** ($10^{-13}$ 차이). MDS의 힘은 **아무 거리**(correlation, Bray–Curtis, UniFrac…)나 넣을 수 있다는 데 있습니다 — 미생물군집 분석의 PCoA가 바로 이것입니다
+
+### 2) Isomap
+
+MDS에 넣는 거리를 **측지 거리**(geodesic)로 바꿉니다.
+
+1.  kNN 그래프를 만들고 (이웃 사이만 직선 거리로 연결)
+2.  그래프 위 **최단경로**(Floyd–Warshall/Dijkstra)로 모든 쌍의 거리를 근사
+3.  그 거리 행렬로 classical MDS
+
+### 3) LLE (Locally Linear Embedding)
+
+1.  각 점을 **이웃 $k$ 개의 선형결합으로 재구성**하는 가중치 $w_{ij}$ 를 구함 ($\sum_j w_{ij} = 1$)
+2.  저차원에서도 **같은 가중치로 재구성**되도록 좌표를 찾음 → $(\mathbf{I} - \mathbf{W})^{\mathsf{T}}(\mathbf{I} - \mathbf{W})$ 의 가장 작은 고유벡터들
+
+### 4) 🧪 실습: swiss roll 펼치기
+
+```{r}
+#| eval: true
+set.seed(61)
+ns <- 600
+tt <- 1.5 * pi * (1 + 2 * runif(ns)); hh <- 20 * runif(ns)       # 말린 위치 t, 높이 h
+S  <- cbind(tt * cos(tt), hh, tt * sin(tt)) + matrix(rnorm(ns * 3, 0, .3), ns, 3)
+arc <- 0.5 * (tt * sqrt(1 + tt^2) + asinh(tt))                   # 펼쳤을 때의 진짜 좌표(호의 길이)
+dU  <- as.vector(dist(cbind(arc, hh)))
+
+isomap <- function(X, k, dim = 2) {
+  D <- as.matrix(dist(X)); n <- nrow(D); G <- matrix(Inf, n, n)
+  for (i in 1:n) { o <- order(D[i, ])[1:(k + 1)]; G[i, o] <- D[i, o] }
+  G <- pmin(G, t(G))                                           # 대칭 kNN 그래프
+  for (m in 1:n) G <- pmin(G, outer(G[, m], G[m, ], "+"))      # Floyd-Warshall 최단경로
+  cmdscale(G, k = dim)
+}
+lle <- function(X, k, dim = 2, reg = 1e-3) {
+  D <- as.matrix(dist(X)); n <- nrow(X); W <- matrix(0, n, n)
+  for (i in 1:n) {
+    nb <- order(D[i, ])[2:(k + 1)]
+    Z  <- sweep(X[nb, , drop = FALSE], 2, X[i, ])
+    C  <- Z %*% t(Z); C <- C + diag(reg * sum(diag(C)), k)      # 국소 Gram 행렬 (정규화)
+    w  <- solve(C, rep(1, k)); W[i, nb] <- w / sum(w)
+  }
+  e <- eigen(crossprod(diag(n) - W), symmetric = TRUE)
+  e$vectors[, (n - 1):(n - dim), drop = FALSE]                 # 0 다음으로 작은 고유벡터
+}
+emb <- list("PCA" = prcomp(S)$x[, 1:2],
+            "Isomap k=6" = isomap(S, 6), "Isomap k=8" = isomap(S, 8), "Isomap k=15" = isomap(S, 15),
+            "LLE k=10" = lle(S, 10), "LLE k=15" = lle(S, 15))
+data.frame(method = names(emb),
+           dist_cor_with_unrolled = round(sapply(emb, function(E) cor(as.vector(dist(E)), dU)), 4),
+           abs_spearman_with_t = round(sapply(emb, function(E) max(abs(cor(E, tt, method = "spearman")))), 4),
+           row.names = NULL)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 2.9
+sr <- do.call(rbind, lapply(c("PCA", "Isomap k=6", "Isomap k=8", "LLE k=10"), function(m)
+  data.frame(a = emb[[m]][, 1], b = emb[[m]][, 2], t = tt, method = m)))
+sr$method <- factor(sr$method, levels = c("PCA", "Isomap k=6", "Isomap k=8", "LLE k=10"))
+ggplot(sr, aes(a, b, colour = t)) + geom_point(size = .7) +
+  facet_wrap(~ method, nrow = 1, scales = "free") +
+  scale_colour_gradient(low = "#2e8b7a", high = "#d1495b") +
+  labs(x = NULL, y = NULL, colour = "roll\nposition") + theme_minimal() +
+  theme(axis.text = element_blank())
+```
+
+-   PCA는 말린 것을 **납작하게 눌러** 안쪽과 바깥쪽 층이 겹칩니다 (거리 보존 0.2549)
+-   **Isomap $k = 6$** 은 거의 완벽하게 펼칩니다 (**0.9982**) — 색이 한쪽 끝에서 다른 끝으로 매끄럽게 이어집니다
+-   그런데 **$k$ 를 8로 두 칸만 올려도 0.7176**, 15면 0.2325로 무너집니다. 이웃이 **층을 건너뛰어** 연결되는 순간(short-circuit) 측지 거리가 망가집니다
+-   LLE는 $k = 10$ 에서 말린 위치 순서는 잘 잡지만(Spearman 0.9729) 거리는 보존하지 않고(0.6855), $k = 15$ 면 순서도 무너집니다(0.5956)
+-   ✅ **매니폴드 학습은 "이웃"의 정의에 운명을 겁니다.** $k$ 를 여러 개 시도해 결과가 안정적인지 반드시 확인하세요. 잡음이 많은 실제 데이터에서는 이런 알고리즘이 쉽게 불안정해집니다
+
+------------------------------------------------------------------------
+
+## 7. Metric learning (척도 학습) 📏 `[보강 — 원자료에 제목만 있음]`
+
+### 1) 거리를 데이터로 배운다
+
+W12 3절에서는 거리를 **미리 골랐습니다**. 척도 학습은 label(또는 "같다/다르다" 쌍)을 이용해 **거리 자체를 학습**합니다.
+
+$$d_{\mathbf{M}}(\mathbf{x}, \mathbf{y}) = \sqrt{(\mathbf{x} - \mathbf{y})^{\mathsf{T}}\mathbf{M}(\mathbf{x} - \mathbf{y})}, \qquad \mathbf{M} = \mathbf{A}^{\mathsf{T}}\mathbf{A} \succeq 0$$
+
+-   $\mathbf{M} = \mathbf{I}$ → Euclidean, $\mathbf{M}$ = 대각 → **feature 가중 거리**(W12의 weighted distance), $\mathbf{M} = \Sigma^{-1}$ → Mahalanobis
+-   $\mathbf{A}$ 로 데이터를 선형변환한 뒤 Euclidean을 쓰는 것과 같습니다 — **학습된 차원 축소**
+-   대표 알고리즘: **NCA**(Neighbourhood Components Analysis), **LMNN**(Large Margin NN). 딥러닝의 siamese/contrastive 학습이 같은 발상의 확장입니다
+
+### 2) 🧪 실습: 표준화로는 안 풀리는 문제
+
+정보 있는 차원 2개 + **같은 스케일의 잡음 차원 40개**. 스케일 문제가 아니라 **관련성** 문제입니다.
+
+```{r}
+#| eval: true
+make_ml <- function(n, seed) {
+  set.seed(seed)
+  y <- rep(c("A", "B"), each = n / 2)
+  inf <- cbind(rnorm(n, ifelse(y == "A", 0, 1.2), .6), rnorm(n, ifelse(y == "A", 0, 1.2), .6))
+  list(X = cbind(inf, matrix(rnorm(n * 40, 0, .85), n, 40)), y = factor(y))
+}
+a <- make_ml(300, 71); b <- make_ml(2000, 72)
+mu <- colMeans(a$X); sdv <- apply(a$X, 2, sd)
+Za <- scale(a$X, mu, sdv); Zb <- scale(b$X, mu, sdv)
+fisher <- apply(Za, 2, function(x) {                       # feature 별 Fisher 점수 = 학습된 대각 M
+  m <- tapply(x, a$y, mean); v <- tapply(x, a$y, var); (m[1] - m[2])^2 / sum(v) })
+Wa <- sweep(Za, 2, sqrt(fisher), "*"); Wb <- sweep(Zb, 2, sqrt(fisher), "*")
+ld <- lda(a$X, a$y); La <- predict(ld, a$X)$x; Lb <- predict(ld, b$X)$x
+data.frame(metric = c("Euclidean (raw)", "standardized Euclidean", "Fisher-weighted (learned, diagonal M)",
+                      "LDA projection (learned, low-rank M)", "oracle: 2 informative dims only"),
+           knn15_accuracy = round(c(mean(knn(a$X, b$X, a$y, 15) == b$y), mean(knn(Za, Zb, a$y, 15) == b$y),
+                                    mean(knn(Wa, Wb, a$y, 15) == b$y), mean(knn(La, Lb, a$y, 15) == b$y),
+                                    mean(knn(a$X[, 1:2], b$X[, 1:2], a$y, 15) == b$y)), 4))
+round(c(fisher_informative = mean(fisher[1:2]), fisher_noise_max = max(fisher[-(1:2)])), 3)
+```
+
+-   표준화는 **아무 도움이 안 됩니다** (0.8025 → 0.8010) — 모든 차원이 원래 같은 스케일이니까요
+-   label로 학습한 Fisher 가중 거리는 **0.9180**, 정보 차원만 아는 oracle(0.9220)에 거의 도달합니다
+-   정보 차원의 Fisher 점수 평균 2.191 vs 잡음 차원 최대 0.088 — 학습된 거리가 **잡음 차원을 스스로 꺼 버린 것**입니다
+-   ⚠️ label을 쓰는 방법이므로 **가중치 학습은 training fold 안에서만** (W2의 leakage)
+
+------------------------------------------------------------------------
+
+## 8. t-SNE와 UMAP 🎨 `[신규]`
+
+단일세포 논문의 거의 모든 그림입니다. 그리고 **가장 많이 오독되는 그림**이기도 합니다.
+
+### 1) t-SNE
+
+1.  고차원에서 점 $i$ 가 $j$ 를 이웃으로 고를 확률 — Gaussian, 폭 $\sigma_i$ 는 **perplexity**(유효 이웃 수)에 맞춰 점마다 따로 정함
+$$p_{j|i} = \frac{\exp(-\|\mathbf{x}_i - \mathbf{x}_j\|^2 / 2\sigma_i^2)}{\sum_{k\ne i}\exp(-\|\mathbf{x}_i - \mathbf{x}_k\|^2 / 2\sigma_i^2)}, \qquad p_{ij} = \frac{p_{j|i} + p_{i|j}}{2n}$$
+2.  저차원에서는 꼬리가 두꺼운 **Student-t**
+$$q_{ij} = \frac{(1 + \|\mathbf{y}_i - \mathbf{y}_j\|^2)^{-1}}{\sum_{k \ne l}(1 + \|\mathbf{y}_k - \mathbf{y}_l\|^2)^{-1}}$$
+3.  $\text{KL}(P\,\|\,Q) = \sum p_{ij}\log(p_{ij}/q_{ij})$ 를 경사하강으로 최소화
+
+✅ KL은 **$p$ 가 큰(가까운) 쌍을 멀리 두는 것**을 크게 벌하고, $p$ 가 작은(먼) 쌍은 거의 신경 쓰지 않습니다. 그래서 **국소 이웃은 지키고 전역 구조는 버립니다.**
+
+### 2) 🧪 실습: t-SNE 직접 구현
+
+```{r}
+#| eval: true
+tsne <- function(X, perplexity = 30, iters = 500, seed = 1, eta = 200, exag = 12, exag_iter = 100) {
+  n <- nrow(X); D2 <- as.matrix(dist(X))^2; P <- matrix(0, n, n); logU <- log(perplexity)
+  for (i in 1:n) {                                   # 점마다 sigma_i 를 perplexity 에 맞춘다 (이분법)
+    di <- D2[i, -i] - min(D2[i, -i]); lo <- 0; hi <- Inf; beta <- 1
+    for (t in 1:60) {
+      p <- exp(-di * beta); sp <- sum(p); H <- log(sp) + beta * sum(di * p) / sp   # 엔트로피
+      if (abs(H - logU) < 1e-5) break
+      if (H > logU) { lo <- beta; beta <- if (is.infinite(hi)) beta * 2 else (beta + hi) / 2 }
+      else          { hi <- beta; beta <- (beta + lo) / 2 }
+    }
+    P[i, -i] <- p / sp
+  }
+  P <- pmax((P + t(P)) / (2 * n), 1e-12)
+  set.seed(seed); Y <- matrix(rnorm(n * 2, 0, 1e-4), n, 2)
+  dY <- matrix(0, n, 2); gains <- matrix(1, n, 2)
+  for (it in 1:iters) {
+    sY  <- rowSums(Y^2)
+    num <- 1 / (1 + outer(sY, sY, "+") - 2 * tcrossprod(Y)); diag(num) <- 0   # Student-t
+    Q   <- pmax(num / sum(num), 1e-12)
+    L   <- ((if (it <= exag_iter) P * exag else P) - Q) * num                  # 초반엔 P 를 과장
+    grad <- 4 * (diag(rowSums(L)) - L) %*% Y
+    gains <- ifelse(sign(grad) != sign(dY), gains + 0.2, gains * 0.8); gains[gains < .01] <- .01
+    dY <- (if (it < 250) 0.5 else 0.8) * dY - eta * gains * grad
+    Y  <- sweep(Y + dY, 2, colMeans(Y + dY))
+  }
+  Y
+}
+```
+
+### 3) 🧪 실습: t-SNE 그림에서 믿어도 되는 것, 안 되는 것
+
+30차원, 군집 4개(각 60개). **A는 조밀(sd 0.5), B는 5배 넓게(sd 2.5)**, **C와 D는 서로 가깝고(거리 3) 나머지와는 멉니다(12~19)**.
+
+```{r}
+#| eval: true
+set.seed(81)
+p30 <- 30
+mus <- rbind(A = rep(0, p30), B = c(12, rep(0, p30 - 1)),
+             C = c(0, 12, rep(0, p30 - 2)), D = c(0, 15, rep(0, p30 - 2)))
+sds <- c(A = .5, B = 2.5, C = 1, D = 1)
+Xt <- do.call(rbind, lapply(rownames(mus), function(g)
+  matrix(rnorm(60 * p30, 0, sds[g]), 60, p30) + matrix(mus[g, ], 60, p30, byrow = TRUE)))
+yt <- rep(rownames(mus), each = 60)
+
+knn_keep <- function(Xh, Y, k = 10) {        # 고차원의 10-NN 중 2차원에서도 10-NN 인 비율
+  Dh <- as.matrix(dist(Xh)); Dl <- as.matrix(dist(Y))
+  mean(sapply(1:nrow(Xh), function(i)
+    length(intersect(order(Dh[i, ])[2:(k + 1)], order(Dl[i, ])[2:(k + 1)])) / k))
+}
+spread <- function(Y, y) tapply(seq_len(nrow(Y)), y, function(ix)
+  mean(sqrt(rowSums(sweep(Y[ix, , drop = FALSE], 2, colMeans(Y[ix, , drop = FALSE]))^2))))
+cdist <- function(Y, y) {                    # 군집 중심 간 거리 / 그 평균 (척도 무관하게 비교)
+  D <- as.matrix(dist(t(sapply(split(seq_len(nrow(Y)), y), function(ix) colMeans(Y[ix, , drop = FALSE])))))
+  D / mean(D[upper.tri(D)])
+}
+
+embt <- list("PCA" = prcomp(Xt)$x[, 1:2], "t-SNE perplexity 5" = tsne(Xt, 5),
+             "t-SNE perplexity 30" = tsne(Xt, 30), "t-SNE perplexity 100" = tsne(Xt, 100))
+sh <- spread(Xt, yt); ch <- cdist(Xt, yt)
+rbind(data.frame(embedding = "original 30-D", knn10_preserved = 1, distance_cor = 1,
+                 spread_B_over_A = round(sh[["B"]] / sh[["A"]], 2),
+                 rel_dist_A_B = round(ch["A", "B"], 2), rel_dist_A_C = round(ch["A", "C"], 2)),
+      do.call(rbind, lapply(names(embt), function(m) {
+        Y <- embt[[m]]; sp <- spread(Y, yt); cd <- cdist(Y, yt)
+        data.frame(embedding = m, knn10_preserved = round(knn_keep(Xt, Y), 3),
+                   distance_cor = round(cor(as.vector(dist(Xt)), as.vector(dist(Y))), 3),
+                   spread_B_over_A = round(sp[["B"]] / sp[["A"]], 2),
+                   rel_dist_A_B = round(cd["A", "B"], 2), rel_dist_A_C = round(cd["A", "C"], 2))
+      })))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 2.9
+td <- do.call(rbind, lapply(names(embt), function(m)
+  data.frame(a = embt[[m]][, 1], b = embt[[m]][, 2], cluster = yt, m = m)))
+td$m <- factor(td$m, levels = names(embt))
+ggplot(td, aes(a, b, colour = cluster, shape = cluster)) +
+  geom_point(size = .9) + facet_wrap(~ m, nrow = 1, scales = "free") +
+  scale_colour_manual(values = c(A = "#d1495b", B = "#2e8b7a", C = "#7d8597", D = "#d1495b")) +
+  scale_shape_manual(values = c(A = 16, B = 16, C = 16, D = 4)) +
+  labs(x = NULL, y = NULL, colour = NULL, shape = NULL) + theme_minimal() +
+  theme(axis.text = element_blank(), legend.position = "bottom")
+```
+
+-   **국소 이웃 보존**(10-NN 중 유지된 비율) — t-SNE(perplexity 30) 0.390 > PCA 0.211. t-SNE가 잘하는 일입니다
+-   **전체 거리 보존** — PCA 0.882 > t-SNE 0.464~0.752. 전역 구조는 PCA가 낫습니다
+-   ⚠️ **군집 크기는 거짓말입니다.** 실제로 B가 A보다 **5.06배** 넓게 퍼져 있는데, perplexity 30의 t-SNE에서는 **1.56배**. t-SNE는 밀도를 평준화합니다
+-   ⚠️ **군집 간 거리도 거짓말입니다.** 실제로 A는 B와 C에서 **거의 같은 거리**(평균 대비 0.91 vs 0.92)인데, perplexity 30의 t-SNE에서는 **B 바로 옆(0.27)**, C는 멀리(1.45) 놓입니다. 그림만 보면 "A와 B는 가까운 아형"이라고 읽게 됩니다. PCA는 0.91 / 0.92를 그대로 지킵니다
+-   perplexity를 100으로 올리면 크기 비(5.77)와 거리 상관(0.752)이 일부 돌아오지만, A–B(0.35) vs A–C(1.09)의 왜곡은 남습니다. **perplexity는 국소–전역 저울의 손잡이**이지 해결책이 아닙니다
+-   (이 데이터에서 seed를 바꾼 영향은 작았습니다 — 아래)
+
+```{r}
+#| eval: true
+s2 <- tsne(Xt, 30, seed = 2)
+c(cor_pairwise_dist_seed1_vs_seed2 = round(cor(as.vector(dist(embt[["t-SNE perplexity 30"]])),
+                                               as.vector(dist(s2))), 3))
+```
+
+### 4) UMAP
+
+-   kNN 그래프를 **퍼지 위상 구조**로 보고, 저차원에서 같은 그래프가 되도록 배치합니다. t-SNE보다 빠르고 전역 구조를 **조금 더** 보존한다고 알려져 있습니다
+-   **`n_neighbors`** — 이웃 수. 작으면 국소, 크면 전역 (t-SNE의 perplexity와 비슷한 역할)
+-   **`min_dist`** — 저차원에서 점들이 얼마나 빽빽하게 뭉칠 수 있는가. 작으면 군집이 더 조밀해 보입니다
+-   이 사이트의 CI에는 `uwot`이 없어 코드를 실행하지 않았습니다. R에서는 `uwot::umap(X, n_neighbors = 15, min_dist = 0.1)`, Python에서는 `umap.UMAP()` 입니다
+-   ⚠️ **위 t-SNE의 함정(크기·거리·모양)이 UMAP에도 그대로 적용됩니다**
+
+::: {.callout-warning}
+## ⚠️ t-SNE/UMAP 그림을 읽는 법
+
+-   **읽어도 되는 것** — 어떤 점들이 **서로 이웃인가**(국소 구조)
+-   **읽으면 안 되는 것** — 군집의 **크기**, 군집 사이의 **거리**, 군집의 **모양**, 축의 값
+-   **군집화는 t-SNE/UMAP 좌표가 아니라 PCA 공간이나 kNN 그래프에서** (W12). 그림은 결과를 보여주는 용도로만
+-   **perplexity / n_neighbors / min_dist와 seed를 논문에 적을 것.** 여러 값에서 결론이 같은지 확인
+-   입력은 보통 **PCA 상위 성분**(예: 30~50개) — 잡음을 먼저 걷어내면 더 안정적입니다
+:::
+
+------------------------------------------------------------------------
+
+## 9. NMF (Non-negative Matrix Factorization) 🧩 `[신규]`
+
+### 1) 부분의 합
+
+발현량·count·스펙트럼처럼 **음수가 없는 데이터** $\mathbf{V}$ ($p$ 유전자 × $n$ 샘플)를
+
+$$\mathbf{V} \approx \mathbf{W}\mathbf{H}, \qquad \mathbf{W} \ge 0,\; \mathbf{H} \ge 0$$
+
+-   $\mathbf{W}$ ($p \times r$) — **유전자 프로그램**(메타유전자). 각 열이 함께 움직이는 유전자 집합
+-   $\mathbf{H}$ ($r \times n$) — 각 샘플에서 각 프로그램의 **활성도**
+-   비음수 제약 때문에 성분끼리 **상쇄할 수 없어서** "더하기만 하는" 부분 기반(parts-based) 표현이 나옵니다. PCA 성분은 양수와 음수가 섞여 해석이 어렵습니다
+
+**Lee & Seung의 곱셈 갱신** — 곱하기만 하므로 비음수가 자동으로 유지되고, 목적함수가 늘지 않습니다.
+
+$$\mathbf{H} \leftarrow \mathbf{H} \odot \frac{\mathbf{W}^{\mathsf{T}}\mathbf{V}}{\mathbf{W}^{\mathsf{T}}\mathbf{W}\mathbf{H}}, \qquad
+\mathbf{W} \leftarrow \mathbf{W} \odot \frac{\mathbf{V}\mathbf{H}^{\mathsf{T}}}{\mathbf{W}\mathbf{H}\mathbf{H}^{\mathsf{T}}}$$
+
+### 2) 🧪 실습: 유전자 프로그램 되찾기
+
+```{r}
+#| eval: true
+nmf <- function(V, r, iters = 500, seed = 1) {
+  set.seed(seed); m <- nrow(V); n <- ncol(V)
+  W <- matrix(runif(m * r), m, r); H <- matrix(runif(r * n), r, n); err <- numeric(iters)
+  for (it in 1:iters) {
+    H <- H * (t(W) %*% V) / (t(W) %*% W %*% H + 1e-10)
+    W <- W * (V %*% t(H)) / (W %*% H %*% t(H) + 1e-10)
+    err[it] <- sum((V - W %*% H)^2)
+  }
+  list(W = W, H = H, err = err)
+}
+set.seed(91)
+prog <- matrix(0, 300, 3)                                  # 유전자 300개, 프로그램 3개
+prog[1:60, 1] <- runif(60, 2, 4); prog[41:100, 2] <- runif(60, 2, 4)   # 1과 2는 유전자 20개를 공유
+prog[101:150, 3] <- runif(50, 2, 4)
+act <- matrix(rgamma(3 * 80, shape = .8, rate = 1), 3, 80) # 샘플 80개의 프로그램 활성도
+V  <- matrix(rpois(300 * 80, prog %*% act + 0.5), 300, 80) # count 잡음
+Vl <- log1p(V)
+
+fit <- nmf(Vl, 3)
+pr  <- prcomp(t(Vl))$rotation[, 1:3]
+cmW <- abs(cor(fit$W, prog)); cmP <- abs(cor(pr, prog))
+data.frame(method = c("NMF (rank 3)", "PCA (3 PCs)"),
+           best_abs_r_per_program = c(paste(round(apply(cmW, 2, max), 3), collapse = " / "),
+                                      paste(round(apply(cmP, 2, max), 3), collapse = " / ")),
+           negative_entries_pct = c(round(100 * mean(fit$W < 0), 1), round(100 * mean(pr < 0), 1)))
+c(error_first = round(fit$err[1], 1), error_last = round(tail(fit$err, 1), 1))
+all(diff(fit$err) <= 1e-8)                                 # 오차가 한 번도 늘지 않았나
+sapply(1:4, function(s) round(tail(nmf(Vl, 3, seed = s)$err, 1), 2))   # seed 4개의 최종 오차
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.4
+#| fig-height: 4
+ordW <- apply(cmW, 2, which.max)                            # 프로그램 순서에 맞춰 성분 정렬
+ordP <- apply(cmP, 2, which.max)
+nz <- function(M) sweep(M, 2, apply(abs(M), 2, max), "/")   # 성분별로 최대 |값| = 1
+hm <- rbind(
+  data.frame(gene = rep(1:160, 3), comp = rep(1:3, each = 160),
+             v = as.vector(nz(fit$W[1:160, ordW])), m = "NMF: W (all >= 0)"),
+  data.frame(gene = rep(1:160, 3), comp = rep(1:3, each = 160),
+             v = as.vector(nz(pr[1:160, ordP])), m = "PCA: loadings (signed)"))
+hm$m <- factor(hm$m, levels = c("NMF: W (all >= 0)", "PCA: loadings (signed)"))
+ggplot(hm, aes(factor(comp), gene, fill = v)) + geom_raster() + facet_wrap(~ m) +
+  scale_y_reverse(breaks = c(1, 41, 60, 100, 150)) +
+  scale_fill_gradient2(low = "#2e8b7a", mid = "white", high = "#d1495b", midpoint = 0, limits = c(-1, 1)) +
+  labs(x = "component", y = "gene index (first 160)", fill = "scaled\nvalue") + theme_minimal()
+```
+
+-   NMF의 세 성분이 세 프로그램과 각각 **|r| = 0.978 / 0.970 / 0.974**로 대응합니다. PCA는 0.719 / 0.803 / 0.910이고 loading의 **55.4%가 음수**
+-   히트맵에서 NMF는 **프로그램 블록이 깨끗하게** 보이고(유전자 41~60의 공유 구간도 두 성분에 나뉘어 나타남), PCA는 부호가 섞인 조합입니다
+-   목적함수는 7788.0 → 4431.7로 **한 번도 늘지 않았고**, seed 4개가 거의 같은 오차에 도달했습니다
+-   ⚠️ NMF도 **국소해**와 **rank $r$ 선택** 문제가 있습니다. 여러 seed로 안정성을 보는 consensus 방법(cophenetic 계수)이 표준입니다
+-   ✅ 암 돌연변이 서명(mutational signatures), 단일세포의 유전자 프로그램(cNMF), 공간전사체의 세포 유형 분해가 모두 NMF 계열입니다
+
+------------------------------------------------------------------------
+
+## 10. 장단점과 실무 지침 ⚠️
+
+### 1) 방법 비교
+
+| 방법 | 선형 | 보존 | 새 샘플 투영 | 규모 | 주의 |
+|---|---|---|---|---|---|
+| **PCA** | ✓ | 분산·전역 구조 | 쉬움 | 매우 큼 | 스케일, 큰 분산 ≠ 중요 |
+| **LDA** | ✓ | class 분리 | 쉬움 | 큼 | label 필요, 최대 class−1 축 |
+| **Kernel PCA** | ✗ | kernel 공간 분산 | $n$ 개 kernel 필요 | $n^2$ | $\sigma$ 민감 |
+| **MDS** | ✓(classical) | 쌍별 거리 | 어려움 | $n^2$ | 거리 선택이 전부 |
+| **Isomap / LLE** | ✗ | 측지 거리 / 국소 선형 | 어려움 | $n^2 \sim n^3$ | **$k$ 에 극도로 민감**, 잡음 |
+| **t-SNE / UMAP** | ✗ | 국소 이웃 | 어려움(UMAP은 가능) | 큼 | **크기·거리·모양 해석 불가** |
+| **NMF** | ✓ | 비음수 부분 | 쉬움 | 큼 | 국소해, rank 선택 |
+
+### 2) 오믹스 데이터에서의 표준 흐름
+
+1.  정규화 + log 변환 → 변동이 큰 유전자 선택 (W2)
+2.  **PCA** → parallel analysis 등으로 잡음 위의 PC만 (보통 10~50개)
+3.  그 PC 공간에서 **군집화**(W12)와 **kNN 그래프**
+4.  **시각화만** t-SNE/UMAP
+5.  해석이 필요하면 PCA loading, **NMF 프로그램**, 또는 군집별 marker
+
+::: {.callout-warning}
+## ⚠️ 차원 축소 결과를 논문에 쓸 때
+
+-   **PCA 전처리를 명시** — 어떤 유전자, 어떤 변환, 표준화 여부, PC 몇 개와 그 근거
+-   **"PCA에서 안 갈린다 = 차이 없다"라고 쓰지 말 것** — 차이가 분산이 작은 축에 있을 수 있습니다 (4절 PCA vs LDA)
+-   **PC1이 배치·라이브러리 크기·세포주기인지 먼저 확인** — 큰 분산은 대개 기술적 요인입니다
+-   **t-SNE/UMAP의 군집 크기·거리·배치로 생물학적 주장을 하지 말 것.** 모수와 seed를 적고, 정량 분석은 원래 공간에서
+-   **차원 축소를 label을 써서 했다면(LDA, 척도 학습) 반드시 training fold 안에서** — 전체 데이터로 LDA를 한 뒤 CV하면 누수 (W2)
+:::
+
+::: {.callout-important}
+## Where this ends up
+
+-   kNN 그래프 → W12의 Louvain/Leiden, 이 챕터의 Isomap·t-SNE·UMAP이 모두 같은 그래프에서 출발
+-   PCA의 복원 오차 최소화 → **autoencoder**의 선형 특수형 (S_M_3 Neural network)
+-   LDA → W6, kernel trick → W10, EM과 잠재 변수 → W11·W12
+-   PCA loading·NMF 프로그램을 변수 중요도로 해석할 때의 함정 → **W14**
+-   p ≫ n 에서 PCA 후 회귀(PCR)와 정규화 회귀(W6)의 비교 → W15 프로젝트에서 직접
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   **차원의 저주** — 1000차원에서 최근접/최원거리 비가 0.891. 10% 이웃을 담으려면 100차원에서 한 변 0.977. "가까움"이 사라집니다
+-   **kNN** — 학습 없는 lazy learner. $k = 1$ 은 train 1.0 / test 0.756, $k = 9$~15가 최적. 거리 가중은 $k$ 가 너무 클 때의 보험(0.6725 → 0.7980)
+-   잡음 차원 100개면 kNN이 0.9625 → **0.5015**, 다수 class 찍기(0.6215)보다 못함
+-   Embedding은 **무엇을 보존하는가**로 구분합니다
+-   **PCA는 feature 선택이 아니라 새 축을 만드는 것**. 투영 분산 최대 = 수직거리 최소(합이 항상 일정), 그리고 **회귀직선과 다른 선**(기울기 0.4605 vs 0.4213)
+-   공분산 고유분해 = SVD = `prcomp`. PC의 **부호는 임의**
+-   PC 개수 — parallel analysis는 **3개**(숨은 요인 수와 일치), 90% 규칙은 **73개**. 잡음 많은 고차원에선 "잡음보다 큰가"를 물을 것
+-   복원 오차 = 버린 고유값의 합 (Eckart–Young)
+-   **표준화하지 않으면** 무의미한 고분산 유전자 5개가 PC1~5를 차지하고 진짜 요인은 PC6으로
+-   **PC1(분산 93%)로 class 정확도 0.49, LD1로 0.925** — 큰 분산 ≠ 중요한 차이
+-   Kernel PCA — 동심원을 $\sigma = 1$ 에서 선형분리(0.9833, 선형 PCA 0.513). 하지만 $\sigma$ 에 민감
+-   Classical MDS = PCA(Euclidean일 때). **Isomap $k = 6$ 은 swiss roll을 펼치지만(0.998), $k = 8$ 이면 short-circuit으로 0.72**
+-   **척도 학습** — 잡음 차원 40개에서 표준화는 무용(0.8010), Fisher 가중 거리는 **0.9180**(oracle 0.9220)
+-   **t-SNE** — 국소 이웃은 PCA보다 잘 지키지만(0.390 vs 0.211), **5배 넓은 군집이 1.56배로**, B와 C에서 같은 거리(0.91 / 0.92)였던 A가 **B 바로 옆(0.27)**으로 옮겨 보입니다. perplexity가 국소–전역 손잡이
+-   **NMF** — 비음수 부분의 합. 유전자 프로그램을 |r| ≥ 0.97로 복원, PCA는 0.72~0.91에 loading 55%가 음수
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Curse of dimensionality** | 차원이 커지면 공간이 비고 거리가 비슷해지는 현상 |
+| **kNN / lazy learning** | 학습 없이 예측 때 가까운 $k$ 개로 투표 |
+| **Embedding** | 무언가를 보존하며 고차원 점을 저차원으로 옮기는 것 |
+| **Principal component** | 분산이 최대인 방향. 이전 PC들과 직교 |
+| **Loading / score** | PC 방향 벡터(고유벡터) / PC 위의 새 좌표 |
+| **Explained variance** | $\lambda_k / \sum\lambda$. scree plot으로 봄 |
+| **Parallel analysis** | 섞은 데이터의 고유값보다 큰 PC만 남기는 기준 |
+| **SVD** | $\mathbf{X}_c = \mathbf{UDV}^{\mathsf{T}}$. PCA의 표준 계산법 |
+| **Kernel PCA** | kernel 행렬의 중심화·고유분해로 비선형 PCA |
+| **MDS / PCoA** | 거리 행렬만으로 좌표 복원. Euclidean이면 PCA와 같음 |
+| **Isomap** | kNN 그래프 최단경로(측지 거리) + MDS |
+| **LLE** | 이웃 재구성 가중치를 저차원에서도 유지 |
+| **Metric learning** | $d_{\mathbf{M}}$ 의 $\mathbf{M}$ 을 label로 학습 (NCA, LMNN) |
+| **t-SNE / perplexity** | 이웃 확률의 KL 최소화 / 유효 이웃 수 |
+| **UMAP** | 퍼지 kNN 그래프를 저차원에 재현. `n_neighbors`, `min_dist` |
+| **NMF** | $\mathbf{V} \approx \mathbf{WH}$, 모두 비음수. 부분 기반 표현 |
+
+## ➕ References
+
+-   Hastie T, Tibshirani R, Friedman J. *The Elements of Statistical Learning*, 2nd ed. Springer, 2009. Ch. 2.5 (curse of dimensionality), 13 (kNN), 14.5 (PCA), 14.8–14.9 (MDS, manifold).
+-   Beyer K, Goldstein J, Ramakrishnan R, Shaft U. When is "nearest neighbor" meaningful? *ICDT 1999*:217–235.
+-   Jolliffe IT, Cadima J. Principal component analysis: a review and recent developments. *Phil Trans R Soc A* 2016;374:20150202.
+-   Horn JL. A rationale and test for the number of factors in factor analysis. *Psychometrika* 1965;30:179–185.
+-   Schölkopf B, Smola A, Müller KR. Nonlinear component analysis as a kernel eigenvalue problem. *Neural Computation* 1998;10(5):1299–1319.
+-   Tenenbaum JB, de Silva V, Langford JC. A global geometric framework for nonlinear dimensionality reduction. *Science* 2000;290:2319–2323.
+-   Roweis ST, Saul LK. Nonlinear dimensionality reduction by locally linear embedding. *Science* 2000;290:2323–2326.
+-   Goldberger J, Roweis S, Hinton G, Salakhutdinov R. Neighbourhood components analysis. *NIPS 2004*.
+-   van der Maaten L, Hinton G. Visualizing data using t-SNE. *JMLR* 2008;9:2579–2605.
+-   Wattenberg M, Viégas F, Johnson I. How to use t-SNE effectively. *Distill* 2016.
+-   McInnes L, Healy J, Melville J. UMAP: uniform manifold approximation and projection for dimension reduction. *arXiv* 1802.03426, 2018.
+-   Chari T, Pachter L. The specious art of single-cell genomics. *PLoS Comput Biol* 2023;19(8):e1011288.
+-   Lee DD, Seung HS. Learning the parts of objects by non-negative matrix factorization. *Nature* 1999;401:788–791.
+-   Brunet JP, Tamayo P, Golub TR, Mesirov JP. Metagenes and molecular pattern discovery using matrix factorization. *PNAS* 2004;101(12):4164–4169.
+
+------------------------------------------------------------------------
+
+[← W12. Clustering](12_clustering.qmd)

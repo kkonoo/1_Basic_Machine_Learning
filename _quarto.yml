@@ -33,6 +33,9 @@ website:
           - chapters/09_ensemble.qmd
           - chapters/10_svm.qmd
           - chapters/11_bayes.qmd
+          - chapters/12_clustering.qmd
+          - chapters/13_dimension_reduction.qmd
+          - chapters/14_interpretation.qmd
       # - section: "1. R env"
       #   contents: "part1/*.qmd"
       # - section: "2. Genomics"

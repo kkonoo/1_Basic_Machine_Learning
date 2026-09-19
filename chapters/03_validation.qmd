@@ -1,0 +1,444 @@
+---
+title: "W3. 검증 설계"
+description: "Hold-out, 교차검증, bootstrap, 그리고 nested CV"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W3. 검증 설계">
+        <meta name="ai-context" content="
+        이 챕터는 모델 성능을 정직하게 추정하는 검증 설계를 다룹니다.
+        Empirical error(training error)와 generalization error의 차이,
+        overfitting과 underfitting을 복잡도 곡선으로 진단하는 법을 먼저 설명합니다.
+        검증 방법으로 hold-out(stratified sampling, 반복 분할),
+        k-fold cross validation, LOOCV, repeated CV, bootstrap과 out-of-bag(약 36.8%)을 다룹니다.
+        분할은 데이터의 구조를 반영해야 합니다. 같은 환자의 여러 샘플이 train과 test에
+        흩어지면 성능이 크게 부풀려집니다. 실습에서 환자 40명 x 반복 3회 데이터로
+        무작위 분할은 정확도 0.975, 환자 단위 분할은 0.5가 나오는 것을 보입니다.
+        배치 구조와 시간 구조도 같은 원리로 분할에 반영해야 합니다.
+        Hyperparameter 튜닝에 사용한 교차검증 점수를 그대로 성능으로 보고하면
+        낙관 편향이 생깁니다. 이를 피하려면 nested cross validation을 씁니다.
+        신호가 없는 데이터에서 non-nested는 0.574, nested는 0.485로 나옵니다
+        (Varma & Simon 2006, Cawley & Talbot 2010).
+        교차검증이 추정하는 것은 특정 모델이 아니라 학습 절차의 성능이며,
+        최종 모델은 전체 데이터로 같은 절차를 다시 적용해 만듭니다.
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   Empirical error와 generalization error를 구분할 수 있다
+-   복잡도 곡선으로 over/underfitting을 진단할 수 있다
+-   Hold-out · k-fold CV · LOOCV · bootstrap의 장단점을 비교할 수 있다
+-   **데이터의 그룹·배치·시간 구조를 분할에 반영할 수 있다**
+-   **튜닝과 평가를 분리해야 하는 이유를 설명하고 nested CV를 설계할 수 있다**
+:::
+
+> 🤔 **교차검증까지 했는데, 왜 논문의 성능이 내 데이터에서 재현되지 않을까?**
+
+------------------------------------------------------------------------
+
+## 1. 두 가지 오차 📉
+
+### 1) Empirical error와 generalization error
+
+-   **Error rate** — 잘못 분류한 샘플 수 / 전체 샘플 수
+-   **Accuracy** — 1 − error rate
+-   **Empirical error** (= training error) — 학습에 쓴 데이터에서의 오차
+-   **Generalization error** — 못 본 데이터에서의 오차. **machine learning의 진짜 목표**
+-   우리는 generalization error를 **직접 계산할 수 없음** → 추정해야 함
+-   **검증 설계 = generalization error를 편향 없이 추정하는 절차 설계**
+
+### 2) Overfitting
+
+-   empirical error는 작은데 generalization error는 큰 상태
+-   원인 — 모델의 학습 능력이 데이터의 실제 구조보다 과함
+-   징후 — training 성능과 validation 성능의 격차가 벌어짐
+-   대응 — 정규화(W6), pruning(W7), ensemble(W9), 데이터 증가
+
+### 3) Underfitting
+
+-   empirical error 자체가 큰 상태
+-   원인 — 모델의 학습 능력 부족, 또는 inductive bias가 문제와 불일치(W1)
+-   대응 — 모델 복잡도 증가, feature 추가·변환
+
+### 4) 🧪 실습: 복잡도 곡선으로 진단
+
+-   비선형 관계 $y = 2\sin(x) + \varepsilon$ 에 decision tree를 깊이별로 적합
+-   training MSE와 test MSE를 함께 관찰
+
+```{r}
+#| eval: true
+#| message: false
+library(ggplot2)
+library(rpart)
+
+set.seed(2026)
+sim <- function(n) {
+  x <- runif(n, -3, 3)
+  data.frame(x = x, y = 2 * sin(x) + rnorm(n, sd = 0.6))
+}
+train <- sim(300)
+test  <- sim(1000)
+
+curve <- do.call(rbind, lapply(1:12, function(d) {
+  m <- rpart(y ~ x, data = train,
+             control = rpart.control(maxdepth = d, cp = 0, minsplit = 2))
+  data.frame(depth = d,
+             Train = mean((predict(m, train) - train$y)^2),
+             Test  = mean((predict(m, test)  - test$y)^2))
+}))
+round(curve, 3)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.5
+#| fig-height: 3.5
+best <- curve$depth[which.min(curve$Test)]
+
+ggplot(tidyr::pivot_longer(curve, -depth, names_to = "set", values_to = "mse"),
+       aes(depth, mse, colour = set)) +
+  geom_line(linewidth = .9) + geom_point(size = 1.8) +
+  geom_vline(xintercept = best, linetype = 2) +
+  scale_colour_manual(values = c(Train = "#2e8b7a", Test = "#d1495b")) +
+  labs(x = "Tree depth (model complexity)", y = "MSE", colour = NULL,
+       caption = paste0("dashed line = best test MSE at depth ", best)) +
+  theme_minimal()
+```
+
+-   **읽는 법**
+    -   왼쪽(얕은 트리) — 둘 다 높음 → **underfitting**
+    -   점선 지점 — test MSE 최소 → 적정 복잡도
+    -   오른쪽(깊은 트리) — train은 계속 내려가는데 test는 상승 → **overfitting**
+-   training error가 줄어드는 것은 **아무 정보도 아님**
+
+------------------------------------------------------------------------
+
+## 2. Hold-out ✂️
+
+### 1) 절차
+
+-   데이터 $D$ 를 서로소인 두 집합으로 분할 — training set / test set
+-   training set으로 학습, test set으로 평가
+-   ⚠️ **validation set은 학습에 쓰지 않음** — 이름이 비슷해 혼동 주의
+
+### 2) Stratified sampling
+
+-   두 집합의 **분포가 같도록** 나눌 것
+-   분류 — class 비율 유지
+-   오믹스 — class + 배치 + 성별 등 **다중 층화** 필요
+-   층화하지 않으면 분할 자체가 성능 변동의 주된 원인이 됨
+
+### 3) ⚠️ 한 번 나눈 값을 믿지 말 것
+
+-   한 번의 분할 결과는 우연의 영향이 큼
+-   N번 반복 분할 → 오차의 **평균**을 validation error로 사용
+-   표본이 작을수록 반복 횟수를 늘릴 것
+
+### 4) 분할 비율
+
+-   일반적으로 training : test = 2:1 ~ 4:1
+-   training을 늘리면 — 모델은 좋아지지만 평가가 불안정
+-   test를 늘리면 — 평가는 안정되지만 모델이 나빠짐
+-   **표본이 작으면 hold-out 대신 교차검증**
+
+------------------------------------------------------------------------
+
+## 3. 교차검증 🔁
+
+### 1) k-fold cross validation
+
+-   $D$ 를 서로소인 $k$ 개 부분집합으로 분할 (stratified sampling)
+-   매 회 1개를 test, 나머지 $k-1$ 개를 training으로 사용
+-   $k$ 번 반복해 얻은 오차의 평균 = validation error
+-   **모든 샘플이 정확히 한 번씩 test에 사용됨**
+
+### 2) LOOCV (Leave-One-Out CV)
+
+-   $k$ = 샘플 수. 매 회 1개만 test
+-   장점 — 분할 방법의 영향을 받지 않음, 편향 작음
+-   단점 — $n$ 번 학습해야 함, **추정의 분산이 큼**
+-   $n$ 이 작을 때만 현실적
+
+### 3) Repeated CV
+
+-   k-fold CV를 서로 다른 분할로 여러 번 반복
+-   분할 우연성에 의한 변동을 줄임
+-   보고 시 **평균과 함께 표준편차를 제시**할 것
+
+### 4) k는 몇으로?
+
+| k | 편향 | 분산 | 계산량 |
+|---|------|------|--------|
+| 작음 (예: 3) | 큼 | 작음 | 적음 |
+| 보통 (5–10) | 적당 | 적당 | 적당 |
+| n (LOOCV) | 작음 | 큼 | 매우 큼 |
+
+-   실무 기본 — **5-fold 또는 10-fold**, 표본이 작으면 repeated 5-fold
+
+------------------------------------------------------------------------
+
+## 4. Bootstrap 🎲
+
+### 1) 복원추출
+
+-   모든 데이터를 학습에 쓰고 싶을 때
+-   $D$ 에서 $m$ 개를 **복원추출**해 $D'$ 생성 → 학습에 사용
+
+### 2) Out-of-bag (OOB)
+
+-   한 샘플이 $D'$ 에 한 번도 뽑히지 않을 확률
+
+$$\lim_{m \to \infty}\left(1 - \frac{1}{m}\right)^{m} = \frac{1}{e} \approx 0.368$$
+
+-   즉 약 **36.8%**가 미사용 → 이 샘플들로 성능 추정 가능(**OOB 추정**)
+-   Random forest가 별도 검증 없이 성능을 내는 원리 (W9)
+
+### 3) 언제 쓰나
+
+-   **쓸 때** — 표본이 매우 작을 때, ensemble의 내부 추정
+-   **주의** — $D'$ 는 원래 $D$ 와 분포가 달라짐(중복 샘플 존재)
+-   $n$ 이 충분하면 hold-out이나 교차검증이 더 안전
+
+------------------------------------------------------------------------
+
+## 5. 분할이 지켜야 할 구조 🧬
+
+::: {.callout-important}
+## 무작위 분할은 기본값이지 정답이 아니다
+
+-   데이터에 **그룹·배치·시간 구조**가 있으면 무작위 분할은 leakage가 됨
+-   "샘플이 독립"이라는 가정이 깨지는 순간 교차검증은 의미를 잃음
+:::
+
+### 1) 그룹 구조
+
+-   같은 환자의 여러 조직·시점 샘플
+-   같은 세포주에서 나온 여러 배양 반복
+-   같은 개체에서 나온 여러 세포(단일세포)
+-   → **그룹 전체가 같은 fold에 들어가야 함** (group k-fold)
+
+### 2) 🧪 실습: 환자 단위 분할을 안 하면
+
+-   설계 — 환자 40명 × 기술 반복 3회 = 샘플 120개, feature 50개
+-   환자마다 고유 프로파일이 있고, **class는 환자에게 무작위 배정**
+-   즉 feature로 class를 맞힐 실제 신호는 **0**
+
+```{r}
+#| eval: true
+#| message: false
+library(class)
+
+set.seed(2026)
+n_pat <- 40; n_rep <- 3; p <- 50
+pat <- rep(1:n_pat, each = n_rep)
+
+# 환자 고유 프로파일 + 측정 잡음
+pat_profile <- matrix(rnorm(n_pat * p, sd = 2), n_pat, p)
+X <- pat_profile[pat, ] + matrix(rnorm(n_pat * n_rep * p, sd = 0.5),
+                                 n_pat * n_rep, p)
+
+# class는 환자 단위로 무작위 배정 → feature와 무관
+y <- factor(sample(rep(c("A", "B"), each = n_pat / 2))[pat])
+
+acc <- function(tr, te, k = 1) mean(knn(X[tr, ], X[te, ], y[tr], k = k) == y[te])
+```
+
+```{r}
+#| eval: true
+# ❌ 무작위 분할 — 같은 환자의 반복이 train/test에 흩어짐
+f_random <- sample(rep(1:5, length.out = length(y)))
+a_random <- sapply(1:5, function(f) acc(f_random != f, f_random == f))
+
+# ✅ 환자 단위 분할 — 한 환자는 통째로 한 fold에
+fold_of_patient <- sample(rep(1:5, length.out = n_pat))
+f_group <- fold_of_patient[pat]
+a_group <- sapply(1:5, function(f) acc(f_group != f, f_group == f))
+
+data.frame(
+  split    = c("Random split", "Patient-level split"),
+  accuracy = round(c(mean(a_random), mean(a_group)), 3)
+)
+```
+
+-   **무작위 분할 ≈ 0.98** — 신호가 0인 데이터에서
+-   원인 — test 샘플의 **가장 가까운 이웃이 같은 환자의 다른 반복**
+-   모델이 배운 것은 질환이 아니라 **환자의 신원**
+-   환자 단위로 나누면 즉시 0.5로 내려옴
+
+::: {.callout-warning}
+## ⚠️ 단일세포 데이터에서 특히 위험
+
+-   세포 단위로 무작위 분할하면 같은 개체의 세포가 양쪽에 흩어짐
+-   세포 수가 많아 통계적으로 "충분해 보이는" 착시까지 겹침
+-   **분할 단위는 세포가 아니라 개체(donor)**
+:::
+
+### 3) 배치 구조
+
+-   시퀀싱 런, 플레이트, 병원, 스캐너 — 모두 배치
+-   배치가 class와 얽혀 있으면(confounded) 어떤 검증도 구제 불가
+-   최소한 **배치를 층화**, 가능하면 **leave-one-batch-out** 평가
+
+### 4) 시간 구조
+
+-   미래 정보로 과거를 예측하면 안 됨
+-   전향적 예측 모델 — 시점 기준 분할(time-based split)
+-   ⚠️ 무작위 CV는 시계열에서 항상 낙관적
+
+------------------------------------------------------------------------
+
+## 6. 튜닝과 nested CV 🎯
+
+### 1) Hyper-parameter vs model parameter
+
+-   **Hyper-parameter** — 알고리즘의 설정값. 사람이 정함. 보통 10개 내외
+    -   kNN의 $k$, 트리의 깊이, Lasso의 $\lambda$, SVM의 $C$·$\gamma$
+-   **Model parameter** — 학습으로 결정되는 값. 매우 많을 수 있음
+    -   회귀계수, 신경망 weight
+-   모든 조합을 탐색하는 것은 불가능 → **탐색 범위와 간격을 먼저 정의**
+
+### 2) 같은 CV로 고르고 같은 CV로 보고하면
+
+-   후보 30개의 CV 점수를 구하고 **최고값을 성능으로 보고**한다고 하자
+-   각 점수에는 우연 변동이 섞여 있음
+-   여러 개 중 **최댓값**을 고르는 순간, 그 값은 우연을 함께 고른 것
+-   → **낙관 편향**. 후보 수가 많을수록 심해짐
+
+### 3) Nested CV
+
+```
+바깥 루프 (성능 추정)
+  ├─ fold 1을 test로 빼둠
+  │    안쪽 루프 (하이퍼파라미터 선택)
+  │      └─ 남은 데이터만으로 CV → 최적 설정 결정
+  │    선택된 설정으로 학습 → fold 1에서 평가
+  ├─ fold 2를 test로 빼둠 …
+  └─ 바깥 fold 성능의 평균 = 정직한 추정
+```
+
+-   **바깥 루프의 test fold는 튜닝에 단 한 번도 사용되지 않음**
+-   보고할 성능은 바깥 루프의 평균
+
+### 4) 🧪 실습: nested vs non-nested
+
+-   신호가 0인 데이터(n=100, p=100), kNN의 $k \in \{1,\dots,30\}$ 탐색
+-   두 방식의 차이를 20회 반복해 평균
+
+```{r}
+#| eval: true
+set.seed(2026)
+n <- 100; p <- 100; ks <- 1:30
+
+one_rep <- function() {
+  X <- matrix(rnorm(n * p), n, p)
+  y <- factor(rep(c("A", "B"), each = n / 2))       # 신호 없음
+
+  cv <- function(idx, folds, k) mean(sapply(unique(folds), function(f) {
+    tr <- idx[folds != f]; te <- idx[folds == f]
+    mean(knn(X[tr, ], X[te, ], y[tr], k = k) == y[te])
+  }))
+
+  outer <- sample(rep(1:5, length.out = n))
+
+  # ❌ non-nested — 같은 CV로 k를 고르고, 그 최고점을 성능으로 보고
+  non_nested <- max(sapply(ks, function(k) cv(1:n, outer, k)))
+
+  # ✅ nested — 바깥 fold를 빼두고, 안쪽에서만 k를 고름
+  nested <- mean(sapply(1:5, function(f) {
+    tr <- which(outer != f); te <- which(outer == f)
+    inner <- sample(rep(1:5, length.out = length(tr)))
+    best  <- ks[which.max(sapply(ks, function(k) cv(tr, inner, k)))]
+    mean(knn(X[tr, ], X[te, ], y[tr], k = best) == y[te])
+  }))
+
+  c(`non-nested` = non_nested, nested = nested)
+}
+
+round(colMeans(t(replicate(20, one_rep()))), 3)
+```
+
+-   진실은 0.5. **non-nested만 체계적으로 위에 있음**
+-   차이가 커 보이지 않아도, 논문에서는 이 정도가 "유망한 바이오마커"가 됨
+-   후보 수를 늘릴수록, 표본이 작을수록 편향은 커짐
+
+### 5) 탐색 전략
+
+| 전략 | 특징 | 적합한 상황 |
+|------|------|------------|
+| Grid search | 격자 전수 탐색 | 하이퍼파라미터 1–2개 |
+| Random search | 무작위 샘플링 | 3개 이상, 중요도가 불균등할 때 |
+| Bayesian optimization | 이전 결과로 다음 후보 결정 | 학습 비용이 클 때 |
+
+------------------------------------------------------------------------
+
+## 7. 최종 모델 만들기 🏁
+
+### 1) 교차검증이 추정하는 것
+
+-   CV는 특정 모델 하나의 성능이 아니라 **학습 절차(procedure)의 성능**을 추정
+-   fold마다 다른 모델이 만들어짐 — 그 중 하나를 고르는 것이 아님
+
+### 2) 전체 데이터로 재학습
+
+-   절차가 정해졌으면, **같은 절차를 전체 데이터에 한 번 더 적용**해 최종 모델 생성
+-   보고할 성능은 CV에서 얻은 추정치
+-   ⚠️ 최종 모델을 다시 평가할 데이터는 남아 있지 않음 → **외부 코호트 검증**(W14)
+
+::: {.callout-important}
+## Where this ends up
+
+-   여기서 정한 검증 틀 위에 W4의 성능 척도가 올라감
+-   fold 안에서 전처리를 반복하는 구조 → W2의 파이프라인과 동일한 원리
+-   OOB 추정 → W9의 random forest
+-   복잡도 곡선의 U자 형태 → W4의 bias-variance decomposition
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   목표는 empirical error가 아니라 **generalization error**
+-   복잡도 곡선 — train은 계속 내려가고 test가 올라가는 지점이 overfitting의 시작
+-   Hold-out은 층화하고 **반복**할 것. 한 번 나눈 값은 우연
+-   실무 기본은 **5-fold 또는 10-fold CV**, 표본이 작으면 repeated
+-   Bootstrap의 OOB는 약 **36.8%** — random forest의 내부 검증 원리
+-   **분할 단위는 샘플이 아니라 그룹** — 환자 단위 분할 실패 시 난수 데이터로 정확도 0.98
+-   배치는 층화, 시간은 시점 기준 분할
+-   **튜닝에 쓴 CV 점수를 성능으로 보고하면 낙관 편향** → nested CV
+-   CV는 절차의 성능을 추정 — 최종 모델은 전체 데이터로 재학습
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Empirical error** | 학습에 사용한 데이터에서의 오차 (= training error) |
+| **Generalization error** | 못 본 데이터에서의 오차. 추정 대상 |
+| **Hold-out** | 데이터를 training/test로 한 번 나누어 평가 |
+| **Stratified sampling** | 분할 시 class 등 분포를 동일하게 유지 |
+| **k-fold CV** | k개 부분집합으로 나눠 번갈아 test로 사용 |
+| **LOOCV** | k = n인 교차검증 |
+| **Out-of-bag** | 복원추출에서 뽑히지 않은 약 36.8%로 성능 추정 |
+| **Group k-fold** | 같은 그룹(환자·개체)을 통째로 한 fold에 배치 |
+| **Nested CV** | 바깥은 성능 추정, 안쪽은 하이퍼파라미터 선택 |
+| **Optimistic bias** | 여러 후보 중 최고점을 성능으로 보고할 때 생기는 과대추정 |
+
+## ➕ References
+
+-   Kohavi R. A study of cross-validation and bootstrap for accuracy estimation and model selection. *IJCAI* 1995;1137–1143.
+-   Efron B, Tibshirani R. Improvements on cross-validation: the .632+ bootstrap method. *JASA* 1997;92(438):548–560.
+-   Varma S, Simon R. Bias in error estimation when using cross-validation for model selection. *BMC Bioinformatics* 2006;7:91.
+-   Cawley GC, Talbot NLC. On over-fitting in model selection and subsequent selection bias in performance evaluation. *JMLR* 2010;11:2079–2107.
+-   Roberts DR, et al. Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. *Ecography* 2017;40(8):913–929.
+-   Whalen S, Schreiber J, Noble WS, Pollard KS. Navigating the pitfalls of applying machine learning in genomics. *Nature Reviews Genetics* 2022;23:169–181.
+-   Hastie T, Tibshirani R, Friedman J. *The Elements of Statistical Learning.* 2nd ed., Ch. 7. Springer, 2009.
+
+------------------------------------------------------------------------
+
+[← W2. 데이터 준비와 Feature Engineering](02_preprocessing.qmd)

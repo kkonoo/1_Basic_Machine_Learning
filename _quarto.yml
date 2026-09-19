@@ -4,8 +4,8 @@ project:
   # output-dir: _site
 
 website:
-  title: "2. Linear Algebra"          # ← 변경
-  description: "강의 설명"           # ← 변경
+  title: "1. Basic Machine Learning"
+  description: "연구자를 위한 기계학습 기초 — R·Python 병기 실습"
   favicon: images/logo.ico
   navbar:
     left:
@@ -13,7 +13,7 @@ website:
         text: Home
     right:
       - icon: github
-        href: https://github.com/kkonoo/2_linear_algebra  # ← 변경
+        href: https://github.com/kkonoo/1_Basic_Machine_Learning
 
   sidebar:
     style: "floating"
@@ -24,7 +24,15 @@ website:
       - section: "Part 1. 기초"
         contents:
           - chapters/01_intro.qmd
-          - chapters/02_r_basics.qmd
+          - chapters/02_preprocessing.qmd
+          - chapters/03_validation.qmd
+          - chapters/04_metrics.qmd
+          - chapters/05_linear_model.qmd
+          - chapters/06_regularization.qmd
+          - chapters/07_decision_tree.qmd
+          - chapters/09_ensemble.qmd
+          - chapters/10_svm.qmd
+          - chapters/11_bayes.qmd
       # - section: "1. R env"
       #   contents: "part1/*.qmd"
       # - section: "2. Genomics"
@@ -69,6 +77,11 @@ format:
   revealjs:
     css: assets/revealjs.css    # 슬라이드용
 
+
+# Python 청크는 실행하지 않고 표시만 하므로 reticulate를 요구하지 않도록 설정
+knitr:
+  opts_chunk:
+    python.reticulate: false
 
 execute:
   freeze: auto          # 코드 실행 결과 캐시 (빠른 빌드)

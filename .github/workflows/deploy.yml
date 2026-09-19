@@ -32,6 +32,9 @@ jobs:
           packages: |
             tidyverse
             BiocManager
+            rpart
+            class
+            glmnet
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2

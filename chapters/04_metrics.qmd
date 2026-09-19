@@ -1,0 +1,518 @@
+---
+title: "W4. 성능 척도와 모델 비교"
+description: "Confusion matrix, ROC·PR, calibration, 모델 비교 검정, bias-variance"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W4. 성능 척도와 모델 비교">
+        <meta name="ai-context" content="
+        이 챕터는 분류·회귀 모델의 성능 척도와 모델 간 비교 방법을 다룹니다.
+        Confusion matrix에서 recall(sensitivity), precision, specificity, NPV가 유도되고,
+        precision과 recall의 trade-off, P-R curve, break-even point, F1과 F-beta,
+        macro/micro 평균을 설명합니다.
+        ROC curve는 FPR-TPR 평면의 곡선이고 AUC로 요약되지만,
+        class imbalance에서는 ROC-AUC가 실제보다 후하게 나옵니다.
+        유병률 2% 데이터에서 ROC-AUC 0.85인 모델도 recall 80%를 얻으려면
+        637명을 검사해 36명만 찾게 되어 precision이 0.057에 불과합니다.
+        따라서 불균형에서는 PR-AUC(average precision)를 함께 봐야 합니다 (Saito & Rehmsmeier 2015).
+        Calibration은 판별력과 다른 축입니다. 다운샘플링으로 균형을 맞춰 학습하면
+        ROC-AUC는 그대로 0.801인데 평균 예측확률이 실제 유병률 0.043에서 0.361로 튀고
+        Brier score가 0.038에서 0.187로 악화됩니다 (Van Calster et al. 2019).
+        모델 비교에는 paired t-test(교차검증 fold 간 상관 때문에 주의),
+        McNemar 검정, 여러 모델·데이터셋 비교에는 Friedman + Nemenyi를 씁니다
+        (Dietterich 1998, Demsar 2006, Nadeau & Bengio 2003).
+        Generalization error는 bias^2 + variance + noise로 분해되며,
+        모델 복잡도가 증가하면 bias는 줄고 variance는 커지는 bias-variance dilemma가 생깁니다.
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   Confusion matrix에서 파생 지표를 유도하고 상황에 맞게 고를 수 있다
+-   Precision-recall trade-off와 임계값의 역할을 설명할 수 있다
+-   **불균형 데이터에서 ROC-AUC가 왜 후한지 설명하고 PR-AUC를 쓸 수 있다**
+-   **판별력과 보정(calibration)을 구분하고 Brier score로 평가할 수 있다**
+-   모델 간 성능 차이가 우연인지 검정할 수 있다
+-   Generalization error를 bias·variance·noise로 분해해 해석할 수 있다
+:::
+
+> 🤔 **ROC-AUC 0.85인 모델로 환자의 80%를 찾으려면, 몇 명을 검사해야 할까?**
+
+------------------------------------------------------------------------
+
+## 1. 기본 척도와 그 함정 📊
+
+### 1) Error rate와 accuracy
+
+-   **Error rate** — 잘못 분류한 샘플 수 / 전체 샘플 수
+-   **Accuracy** — 1 − error rate
+-   장점 — 직관적, 계산 간단
+-   한계 — **class 분포를 전혀 반영하지 않음**
+
+### 2) ⚠️ Accuracy paradox
+
+-   유병률 2% 질환에서 "전원 음성"이라고 답하는 모델
+-   Accuracy = 98%. 환자는 **한 명도** 찾지 못함
+-   → 불균형 데이터에서 accuracy는 **보고하지 않는 편이 낫다**
+
+------------------------------------------------------------------------
+
+## 2. Confusion matrix 🔲
+
+### 1) 네 칸
+
+|  | 예측 Positive | 예측 Negative |
+|---|---|---|
+| **실제 Positive** | TP (True Positive) | FN (False Negative) |
+| **실제 Negative** | FP (False Positive) | TN (True Negative) |
+
+### 2) 파생 지표
+
+| 지표 | 식 | 읽는 법 |
+|------|-----|--------|
+| **Recall / Sensitivity** | TP / (TP + FN) | 실제 양성 중 몇 %를 잡았나 |
+| **Specificity** | TN / (TN + FP) | 실제 음성 중 몇 %를 통과시켰나 |
+| **Precision / PPV** | TP / (TP + FP) | 양성이라 한 것 중 몇 %가 진짜인가 |
+| **NPV** | TN / (TN + FN) | 음성이라 한 것 중 몇 %가 진짜인가 |
+| **FPR** | FP / (FP + TN) = 1 − specificity | 위양성률 |
+
+-   **Recall과 specificity** — 실제 class를 기준으로 계산. 유병률과 무관
+-   **Precision과 NPV** — 예측을 기준으로 계산. **유병률에 크게 의존**
+
+### 3) 무엇을 볼 것인가
+
+| 상황 | 중요한 지표 | 이유 |
+|------|-----------|------|
+| 선별검사(screening) | Recall ↑ | 놓치면 안 됨. 위양성은 확진검사로 걸러냄 |
+| 확진·치료 결정 | Precision ↑ | 잘못된 양성의 대가가 큼 |
+| 바이오마커 패널 후보 선정 | Precision ↑ | 후속 실험 자원이 한정 |
+| 자원 배분 (검사 100건) | Precision @ top-k | 실제 운영 조건과 일치 |
+
+-   **하나의 숫자로 요약하기 전에, 이 모델이 어떻게 쓰일지를 먼저 정할 것**
+
+------------------------------------------------------------------------
+
+## 3. Precision-Recall과 F score ⚖️
+
+### 1) Trade-off
+
+-   임계값을 낮추면 — 양성 판정 증가 → recall ↑, precision ↓
+-   임계값을 높이면 — recall ↓, precision ↑
+-   **둘은 원리적으로 동시에 최대화되지 않음**
+
+### 2) P-R curve와 BEP
+
+-   임계값을 연속적으로 바꾸며 (recall, precision)을 그린 곡선
+-   곡선 아래 면적이 클수록 좋음 → 성능 비교 가능
+-   **Break-even point (BEP)** — precision = recall 이 되는 지점
+-   BEP는 간편하지만 **너무 단순** — precision과 recall의 상대 중요도를 반영 못 함
+
+### 3) F1과 Fβ
+
+$$F_1 = \frac{2 \cdot P \cdot R}{P + R}, \qquad F_\beta = \frac{(1+\beta^2)\, P \cdot R}{\beta^2 P + R}$$
+
+-   $F_1$ — precision과 recall의 **조화평균**. 한쪽이 낮으면 크게 벌점
+-   $\beta$ — precision 대비 **recall의 상대적 중요도**
+    -   $\beta > 1$ → recall 중시 (선별검사)
+    -   $\beta < 1$ → precision 중시 (확진)
+-   ⚠️ F score는 **TN을 전혀 쓰지 않음** — 음성을 잘 거르는 능력은 반영 안 됨
+
+### 4) Macro / micro
+
+-   다중 class 또는 반복 검증에서 평균 내는 두 방식
+-   **Micro** — 모든 fold·class의 TP/FP/FN을 합산한 뒤 지표 계산
+    -   샘플이 많은 class의 영향이 큼
+-   **Macro** — class·fold별로 지표를 계산한 뒤 평균
+    -   **희귀 class에 동등한 가중치** → 불균형에서는 보통 macro
+-   보고 시 어느 쪽인지 반드시 명시
+
+------------------------------------------------------------------------
+
+## 4. ROC, AUC, 그리고 불균형 📈
+
+### 1) 임계값을 바꾼다는 것
+
+-   대부분의 분류기는 0/1이 아니라 **연속 점수**를 출력
+-   임계값 하나를 고정하면 정보가 손실됨
+-   → 모든 임계값에 걸쳐 성능을 요약하는 곡선이 필요
+
+### 2) ROC와 AUC
+
+-   **ROC curve** — x축 FPR, y축 TPR(= recall)
+-   **AUC** — 곡선 아래 면적
+-   해석 — **무작위로 뽑은 양성 1명이 음성 1명보다 높은 점수를 받을 확률**
+-   0.5 = 무작위, 1.0 = 완전 분리
+-   장점 — 임계값·유병률과 무관하게 **순위 능력**만 평가
+
+### 3) ⚠️ 불균형에서 ROC-AUC는 후하다
+
+-   FPR의 분모는 TN + FP. 음성이 압도적으로 많으면 **FP가 꽤 늘어도 FPR은 거의 안 움직임**
+-   결과 — ROC 곡선은 좋아 보이는데, 실제 양성 판정 목록은 위양성투성이
+-   PR curve는 분모에 TN이 없어 이 문제에 영향받지 않음
+-   **PR-AUC의 기준선은 0.5가 아니라 유병률** — 보고 시 함께 제시할 것
+
+### 4) 🧪 실습: 같은 모델, 두 개의 그림
+
+-   샘플 2,000명, 유병률 약 2%
+-   양성은 점수 분포가 평균 1.5만큼 높음 (현실적인 수준의 신호)
+
+```{r}
+#| eval: true
+#| message: false
+library(ggplot2)
+
+set.seed(2026)
+n <- 2000
+label <- rbinom(n, 1, 0.02)
+score <- rnorm(n, mean = ifelse(label == 1, 1.5, 0))
+
+# ROC-AUC = 양성이 음성보다 높은 점수를 받을 확률 (Mann-Whitney)
+auc_roc <- function(s, l) {
+  r <- rank(s); n1 <- sum(l == 1); n0 <- sum(l == 0)
+  (sum(r[l == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0)
+}
+# PR-AUC = average precision
+avg_prec <- function(s, l) {
+  o <- order(s, decreasing = TRUE); y <- l[o]
+  tp <- cumsum(y == 1)
+  sum((tp / seq_along(y))[y == 1]) / sum(l == 1)
+}
+
+data.frame(
+  prevalence  = round(mean(label), 3),
+  n_positive  = sum(label),
+  ROC_AUC     = round(auc_roc(score, label), 3),
+  PR_AUC      = round(avg_prec(score, label), 3),
+  PR_baseline = round(mean(label), 3)
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.6
+o <- order(score, decreasing = TRUE); y <- label[o]
+tp <- cumsum(y == 1); fp <- cumsum(y == 0)
+prev <- mean(label)
+
+curves <- rbind(
+  data.frame(panel = sprintf("ROC  (AUC = %.3f)", auc_roc(score, label)),
+             x = fp / sum(label == 0), y = tp / sum(label), type = "model"),
+  data.frame(panel = sprintf("Precision-Recall  (AP = %.3f)", avg_prec(score, label)),
+             x = tp / sum(label), y = tp / seq_along(y), type = "model")
+)
+refs <- rbind(
+  data.frame(panel = sprintf("ROC  (AUC = %.3f)", auc_roc(score, label)),
+             x = c(0, 1), y = c(0, 1), type = "baseline"),
+  data.frame(panel = sprintf("Precision-Recall  (AP = %.3f)", avg_prec(score, label)),
+             x = c(0, 1), y = c(prev, prev), type = "baseline")
+)
+
+plot_df <- rbind(curves, refs)
+plot_df$panel <- factor(plot_df$panel, levels = unique(curves$panel))  # ROC를 왼쪽에
+
+ggplot(plot_df, aes(x, y, linetype = type)) +
+  geom_line(linewidth = .8, colour = "#d1495b") +
+  facet_wrap(~ panel, scales = "free_x") +
+  scale_linetype_manual(values = c(model = 1, baseline = 2)) +
+  labs(x = NULL, y = NULL, linetype = NULL,
+       caption = "left: FPR vs TPR   |   right: Recall vs Precision (dashed = prevalence)") +
+  theme_minimal()
+```
+
+```{r}
+#| eval: true
+# 실제 운영 조건으로 환산하면?
+recall <- tp / sum(label); precision <- tp / seq_along(y)
+do.call(rbind, lapply(c(0.3, 0.5, 0.8), function(r) {
+  i <- which(recall >= r)[1]
+  data.frame(target_recall = r, n_tested = i,
+             true_positives = tp[i], precision = round(precision[i], 3))
+}))
+```
+
+-   **ROC-AUC 0.849** — 논문이라면 "우수한 판별력"으로 쓰일 숫자
+-   그러나 환자의 **80%를 찾으려면 637명을 검사해 36명**을 얻음 → precision 0.057
+-   같은 모델, 같은 데이터. **지표 선택만 바꿔도 결론이 뒤집힘**
+
+------------------------------------------------------------------------
+
+## 5. 확률을 믿을 수 있는가 — Calibration 🎯
+
+### 1) 판별력 ≠ 보정
+
+-   **Discrimination(판별력)** — 양성을 음성보다 높게 매기는 능력. ROC-AUC가 측정
+-   **Calibration(보정)** — "위험도 20%"라고 한 환자들 중 실제로 20%가 발병하는가
+-   **둘은 독립적** — 모든 확률에 같은 상수를 곱해도 AUC는 변하지 않음
+-   임상 의사결정·자원 배분에는 **확률의 절대값**이 필요 → 보정이 필수
+
+### 2) Calibration plot과 Brier score
+
+-   **Calibration plot** — 예측확률을 구간별로 묶어 (평균 예측확률, 실제 발생률)을 그림
+    -   대각선에 붙을수록 좋음
+-   **Brier score** — $\frac{1}{n}\sum (p_i - y_i)^2$
+    -   낮을수록 좋음. 판별력과 보정을 **함께** 반영
+
+### 3) 🧪 실습: 균형을 맞춰 학습한 대가
+
+-   불균형이 싫어서 다수 class를 다운샘플링해 1:1로 맞춘 뒤 학습하는 관행
+-   판별력은 유지되지만 **확률이 통째로 이동**함
+
+```{r}
+#| eval: true
+set.seed(2026)
+n <- 4000
+x <- rnorm(n)
+p_true <- plogis(-4 + 1.5 * x)          # 실제 유병률이 낮은 상황
+y <- rbinom(n, 1, p_true)
+d <- data.frame(x, y)
+tr <- 1:2000; te <- 2001:4000
+
+# ① 원래 분포 그대로 학습
+m_plain <- glm(y ~ x, data = d[tr, ], family = binomial)
+
+# ② 다수 class를 다운샘플링해 1:1로 맞춰 학습
+pos <- tr[d$y[tr] == 1]
+neg <- sample(tr[d$y[tr] == 0], length(pos))
+m_bal <- glm(y ~ x, data = d[c(pos, neg), ], family = binomial)
+
+p1 <- predict(m_plain, d[te, ], type = "response")
+p2 <- predict(m_bal,   d[te, ], type = "response")
+brier <- function(p, y) mean((p - y)^2)
+
+data.frame(
+  model       = c("Original distribution", "Downsampled to 1:1"),
+  mean_pred   = round(c(mean(p1), mean(p2)), 3),
+  observed    = round(mean(d$y[te]), 3),
+  ROC_AUC     = round(c(auc_roc(p1, d$y[te]), auc_roc(p2, d$y[te])), 3),
+  Brier       = round(c(brier(p1, d$y[te]), brier(p2, d$y[te])), 4)
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.5
+#| fig-height: 3.5
+cal <- function(p, lab, name, bins = 10) {
+  g <- cut(p, quantile(p, seq(0, 1, length.out = bins + 1)),
+           include.lowest = TRUE)
+  data.frame(model = name,
+             predicted = tapply(p, g, mean),
+             observed  = tapply(lab, g, mean))
+}
+cal_df <- rbind(cal(p1, d$y[te], "Original distribution"),
+                cal(p2, d$y[te], "Downsampled to 1:1"))
+
+ggplot(cal_df, aes(predicted, observed, colour = model)) +
+  geom_abline(linetype = 2) +
+  geom_line(linewidth = .8) + geom_point(size = 1.8) +
+  scale_colour_manual(values = c("Original distribution" = "#2e8b7a",
+                                 "Downsampled to 1:1"    = "#d1495b")) +
+  labs(x = "Mean predicted probability", y = "Observed frequency", colour = NULL,
+       caption = "dashed = perfect calibration") +
+  theme_minimal()
+```
+
+-   **ROC-AUC는 두 모델이 동일 (0.801)** — 순위를 바꾸지 않았으므로 당연
+-   그러나 평균 예측확률은 실제 0.043 대비 **0.361로 8배 과대**
+-   Brier score는 0.038 → 0.187로 악화
+-   → 재샘플링은 **임계값 조정의 한 형태**일 뿐, 확률을 개선하지 않음
+
+::: {.callout-warning}
+## ⚠️ W6 class imbalance 처리와 직결
+
+-   SMOTE·다운샘플링 후 예측확률을 그대로 임상 위험도로 보고하는 것은 오류
+-   판별력만 필요하면 문제없음. **확률이 필요하면 반드시 재보정**
+:::
+
+### 4) 보정 방법
+
+-   **Platt scaling** — 예측 점수에 로지스틱 회귀를 한 번 더 적용
+-   **Isotonic regression** — 단조 증가 제약만 두는 비모수 보정
+-   ⚠️ 보정도 **학습이므로 별도 데이터(또는 fold 안)에서** 수행할 것
+
+------------------------------------------------------------------------
+
+## 6. 회귀 지표 📏
+
+| 지표 | 특징 | 주의 |
+|------|------|------|
+| **RMSE** | 원래 단위, 큰 오차에 민감 | 이상치에 크게 흔들림 |
+| **MAE** | 원래 단위, 이상치에 robust | 미분 불가점 존재 |
+| **R²** | 설명된 분산 비율 | test set에서는 음수 가능 |
+| **MAPE** | 상대 오차(%) | 실제값이 0 근처면 폭발 |
+
+-   발현량·농도처럼 **로그 스케일이 자연스러운 값**은 로그 변환 후 평가
+-   지표는 **의사결정 비용**을 반영해 고를 것 — 과대예측과 과소예측의 대가가 다르면 비대칭 손실
+
+------------------------------------------------------------------------
+
+## 7. 모델 비교 🆚
+
+### 1) 차이가 우연인가
+
+-   모델 A가 0.82, 모델 B가 0.79 — **이 차이는 재현되는가?**
+-   교차검증 점수에는 분할 우연에 의한 변동이 섞여 있음
+-   점수 하나만 비교하는 것은 근거가 되지 못함
+
+### 2) Paired t-test
+
+-   같은 fold에서 두 모델의 성능 차이를 쌍으로 비교
+-   ⚠️ **교차검증 fold는 서로 독립이 아님** — training set이 대부분 겹침
+-   → 표준 paired t-test는 **1종 오류가 부풀려짐**
+-   대안 — corrected resampled t-test (Nadeau & Bengio 2003)
+
+### 3) McNemar 검정
+
+-   **같은 test set**에서 두 모델의 예측이 갈린 샘플만 사용
+-   두 분류기를 한 번씩만 학습해도 적용 가능
+-   불일치 쌍 (A만 맞음, B만 맞음)의 비대칭성을 검정
+
+### 4) Friedman + Nemenyi
+
+-   **여러 모델 × 여러 데이터셋**을 동시에 비교할 때
+-   Friedman — 모델 간 순위에 차이가 있는지 (비모수)
+-   유의하면 Nemenyi 사후검정 → critical difference diagram
+-   벤치마크 논문의 표준 절차 (Demšar 2006)
+
+### 5) ⚠️ 다중 비교
+
+-   모델 10개를 비교하면 우연히 "유의한" 차이가 나옴
+-   다중비교 보정 필수
+-   **성능 차이가 작으면, 단순한 모델을 고르는 것이 정당** (Occam's razor, W1)
+
+------------------------------------------------------------------------
+
+## 8. Bias-Variance Decomposition 🎲
+
+### 1) 세 성분
+
+-   같은 분포에서 뽑아도 training set이 달라지면 모델이 달라짐
+-   **Variance** — training set 표집에 의한 예측값의 흔들림
+-   **Bias** — 학습된 모델의 기대 예측값과 실제값의 차이
+-   **Noise** — 가진 변수로는 설명 불가능한 부분. **문제 자체의 난이도**
+    -   기댓값 0으로 가정. 어떤 모델로도 줄일 수 없는 **하한**
+
+### 2) 분해식
+
+$$\mathbb{E}\left[(y - \hat f(x))^2\right] = \underbrace{\text{Bias}^2}_{\text{모델의 한계}} + \underbrace{\text{Variance}}_{\text{표집의 흔들림}} + \underbrace{\sigma^2}_{\text{줄일 수 없음}}$$
+
+### 3) Bias-variance dilemma
+
+-   모델을 단순하게 → bias ↑, variance ↓ → **underfitting**
+-   모델을 복잡하게 → bias ↓, variance ↑ → **overfitting**
+-   generalization error를 최소화하는 **중간 지점**이 존재
+-   W3에서 본 복잡도 곡선의 U자 형태가 바로 이것
+
+### 4) 🧪 실습: 분해를 눈으로 보기
+
+-   진짜 함수 $f(x) = \sin(2x)$, 잡음 $\sigma = 0.5$ → 이론적 하한 $\sigma^2 = 0.25$
+-   training set 200개를 새로 뽑아가며 깊이별로 트리를 적합
+
+```{r}
+#| eval: true
+#| message: false
+library(rpart)
+library(tidyr)
+
+set.seed(2026)
+f <- function(x) sin(2 * x); sigma <- 0.5
+x_grid <- seq(-2.5, 2.5, length.out = 60)
+
+bv <- do.call(rbind, lapply(1:8, function(depth) {
+  # 같은 분포에서 training set을 200번 새로 뽑아 예측을 모음
+  P <- sapply(1:200, function(b) {
+    xt <- runif(80, -2.5, 2.5)
+    dt <- data.frame(x = xt, y = f(xt) + rnorm(80, sd = sigma))
+    m <- rpart(y ~ x, dt,
+               control = rpart.control(maxdepth = depth, cp = 0, minsplit = 2))
+    predict(m, data.frame(x = x_grid))
+  })
+  data.frame(depth    = depth,
+             bias2    = mean((rowMeans(P) - f(x_grid))^2),
+             variance = mean(apply(P, 1, var)),
+             noise    = sigma^2)
+}))
+bv$total <- bv$bias2 + bv$variance + bv$noise
+round(bv, 3)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.5
+#| fig-height: 3.5
+long <- pivot_longer(bv, c(bias2, variance, noise, total),
+                     names_to = "component", values_to = "value")
+
+ggplot(long, aes(depth, value, colour = component)) +
+  geom_line(linewidth = .9) + geom_point(size = 1.6) +
+  geom_vline(xintercept = bv$depth[which.min(bv$total)], linetype = 2) +
+  scale_colour_manual(values = c(bias2 = "#2e8b7a", variance = "#d1495b",
+                                 noise = "grey55",  total = "black")) +
+  labs(x = "Tree depth (model complexity)", y = "Expected squared error",
+       colour = NULL, caption = "dashed = minimum total error") +
+  theme_minimal()
+```
+
+-   **bias²** — 깊이가 늘수록 급격히 0으로 수렴
+-   **variance** — 깊이가 늘수록 계속 증가
+-   **noise** — 0.25에서 수평. **어떤 모델도 이 아래로 못 감**
+-   **total** — 둘의 합이 만드는 U자. 최소 지점이 최적 복잡도
+-   W9의 ensemble은 이 그림에서 **variance를 깎는 전략**(bagging)과 **bias를 깎는 전략**(boosting)으로 나뉨
+
+::: {.callout-important}
+## Where this ends up
+
+-   불균형 처리 → W6 (class imbalance, threshold moving)
+-   Variance 감소 → W9 bagging·random forest
+-   Bias 감소 → W9 boosting
+-   보정과 보고 지침 → W14 (TRIPOD+AI)
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   **Accuracy는 불균형에서 쓰지 말 것** — 전원 음성으로 98%가 나옴
+-   Recall·specificity는 유병률과 무관, **precision·NPV는 유병률에 크게 의존**
+-   지표는 **모델이 어떻게 쓰일지**를 정한 뒤에 고른다
+-   F score는 TN을 쓰지 않음. 불균형 다중 class 평균은 보통 macro
+-   **ROC-AUC는 불균형에서 후하다** — AUC 0.849인 모델의 실제 precision은 0.057
+-   PR-AUC를 함께 보고하고, **기준선이 유병률**임을 명시
+-   **판별력과 보정은 다른 축** — 다운샘플링은 AUC를 유지한 채 확률을 8배 부풀림
+-   모델 비교는 검정으로 — CV fold는 독립이 아니므로 corrected t-test 또는 McNemar
+-   Generalization error = **bias² + variance + noise**, noise는 줄일 수 없는 하한
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Recall / Sensitivity** | 실제 양성 중 맞게 잡아낸 비율 |
+| **Precision / PPV** | 양성으로 예측한 것 중 실제 양성 비율 |
+| **Fβ score** | precision·recall의 가중 조화평균. β>1이면 recall 중시 |
+| **ROC curve / AUC** | FPR-TPR 곡선과 그 아래 면적. 순위 능력 |
+| **PR-AUC (AP)** | recall-precision 곡선 면적. 기준선은 유병률 |
+| **Calibration** | 예측확률이 실제 발생률과 일치하는 정도 |
+| **Brier score** | 예측확률과 실제값 차이의 제곱 평균. 낮을수록 좋음 |
+| **McNemar test** | 같은 test set에서 두 분류기의 불일치 쌍을 비교 |
+| **Bias² / Variance / Noise** | 모델의 한계 / 표집의 흔들림 / 줄일 수 없는 하한 |
+
+## ➕ References
+
+-   Dietterich TG. Approximate statistical tests for comparing supervised classification learning algorithms. *Neural Computation* 1998;10(7):1895–1923.
+-   Nadeau C, Bengio Y. Inference for the generalization error. *Machine Learning* 2003;52(3):239–281.
+-   Demšar J. Statistical comparisons of classifiers over multiple data sets. *JMLR* 2006;7:1–30.
+-   Saito T, Rehmsmeier M. The precision-recall plot is more informative than the ROC plot when evaluating binary classifiers on imbalanced datasets. *PLoS ONE* 2015;10(3):e0118432.
+-   Van Calster B, McLernon DJ, van Smeden M, Wynants L, Steyerberg EW. Calibration: the Achilles heel of predictive analytics. *BMC Medicine* 2019;17:230.
+-   Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updated guidance for reporting clinical prediction models. *BMJ* 2024;385:e078378.
+-   Hastie T, Tibshirani R, Friedman J. *The Elements of Statistical Learning.* 2nd ed., Ch. 7. Springer, 2009.
+
+------------------------------------------------------------------------
+
+[← W3. 검증 설계](03_validation.qmd)

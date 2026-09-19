@@ -1,0 +1,520 @@
+---
+title: "W6. 정규화 · LDA · 다중분류 · 불균형"
+description: "Ridge·Lasso·Elastic Net, Fisher LDA, 다중분류 전략, class imbalance"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W6. 정규화 · LDA · 다중분류 · 불균형">
+        <meta name="ai-context" content="
+        이 챕터는 선형 모델의 네 가지 확장을 다룹니다.
+        첫째 정규화입니다. p > n이면 X^T X의 역행렬이 없어 최소제곱법이 실패하지만,
+        Ridge는 대각선에 lambda를 더해 (X^T X + lambda I)^-1로 항상 풀립니다.
+        Ridge(L2)는 계수를 0에 가깝게 줄이지만 0으로 만들지는 않고,
+        Lasso(L1)는 정확히 0으로 만들어 feature selection 효과가 있습니다.
+        p=500, 진짜 신호 10개인 데이터에서 Lasso는 39개를 고르며 진짜 10개를 모두 포함하고,
+        Ridge는 500개 전부를 0이 아닌 값으로 둡니다. Elastic Net은 둘의 절충입니다.
+        lambda는 교차검증으로 고르며 lambda.min과 lambda.1se가 있습니다.
+        둘째 LDA입니다. Fisher LDA는 between-class 분산은 키우고 within-class 분산은 줄이는
+        방향으로 데이터를 정사영합니다. PCA와 달리 supervised이며, 분산이 큰 축과
+        class를 가르는 축이 다를 때 PCA는 실패합니다. 실습에서 PC1 투영의 t = 1.92,
+        LD1 투영의 t = 16.2로 8배 차이가 납니다.
+        셋째 다중분류로 One-vs-One, One-vs-Rest, ECOC, softmax를 다룹니다.
+        넷째 class imbalance입니다. 유병률 7%에서 기본 임계값 0.5는 recall 0.131에 그치고,
+        임계값을 0.225로 조정하면 F1이 0.209에서 0.344로 오르면서 Brier score는 그대로입니다.
+        반면 1:1 다운샘플링은 recall은 0.793으로 높지만 F1은 0.301이고
+        Brier score가 0.058에서 0.180으로 3배 악화됩니다.
+        즉 확률이 필요하면 재샘플링이 아니라 threshold moving을 써야 합니다
+        (van den Goorbergh et al. 2022).
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   $p \gg n$ 에서 최소제곱법이 실패하는 이유와 정규화의 해결 원리를 설명할 수 있다
+-   **Ridge와 Lasso의 차이를 기하학적으로 설명하고 상황에 맞게 고를 수 있다**
+-   λ를 교차검증으로 선택하고 `lambda.min`과 `lambda.1se`를 구분할 수 있다
+-   LDA의 목적함수를 설명하고 PCA와의 차이를 말할 수 있다
+-   다중분류 전략(OvO / OvR / ECOC / softmax)을 비교할 수 있다
+-   **class imbalance에서 재샘플링과 threshold moving의 대가를 비교할 수 있다**
+:::
+
+> 🤔 **유전자 20,000개, 환자 100명. $(X^{\mathsf{T}}X)^{-1}$ 이 존재하지 않는데 계수를 어떻게 구하나?**
+
+------------------------------------------------------------------------
+
+## 1. 왜 정규화인가 🔒
+
+### 1) W5가 남긴 문제
+
+-   최소제곱법의 해는 $\hat{\mathbf{w}} = (X^{\mathsf{T}}X)^{-1}X^{\mathsf{T}}\mathbf{y}$
+-   $X^{\mathsf{T}}X$ 는 $p \times p$ 행렬. **rank는 최대 $n$**
+-   $p > n$ 이면 rank 부족 → **역행렬 없음** → 해가 무수히 많음
+-   $p < n$ 이어도 다중공선성이 심하면 거의 특이행렬 → 계수가 폭주
+
+### 2) 🧪 실습: OLS는 실패하고 Ridge는 작동한다
+
+```{r}
+#| eval: true
+set.seed(2026)
+n <- 30; p <- 50                       # p > n
+X <- matrix(rnorm(n * p), n, p)
+beta_true <- c(rep(2, 5), rep(0, p - 5))   # 진짜 신호는 5개뿐
+y <- as.vector(X %*% beta_true) + rnorm(n, sd = 1)
+
+# 최소제곱법 (W5의 normal equation) — 결과 문자열은 ASCII로 (로케일 안전)
+ols <- try(solve(t(X) %*% X) %*% t(X) %*% y, silent = TRUE)
+if (inherits(ols, "try-error")) "OLS FAILED: X'X is singular" else "OLS succeeded"
+```
+
+```{r}
+#| eval: true
+# Ridge: 대각선에 lambda를 더하는 것만으로 항상 역행렬이 존재
+ridge_closed <- function(X, y, lambda) {
+  solve(t(X) %*% X + lambda * diag(ncol(X))) %*% t(X) %*% y
+}
+
+do.call(rbind, lapply(c(0.1, 1, 10), function(lam) {
+  w <- ridge_closed(X, y, lam)
+  data.frame(lambda = lam,
+             norm_w        = round(sqrt(sum(w^2)), 3),
+             mean_signal   = round(mean(w[1:5]), 3),      # 진짜 신호 5개
+             mean_noise    = round(mean(abs(w[6:p])), 3)) # 나머지 45개
+}))
+```
+
+-   $\lambda$ 를 더하는 것만으로 **항상 역행렬이 존재** — 수학적으로 문제가 사라짐
+-   $\lambda$ 가 커질수록 계수 전체가 0 쪽으로 수축(shrinkage)
+-   진짜 신호와 잡음의 크기 차이는 유지됨
+
+### 3) 벌점의 아이디어
+
+$$\text{최소화 대상} = \underbrace{\text{Loss}(\mathbf{w})}_{\text{데이터에 맞추기}} + \underbrace{\lambda \cdot \text{Penalty}(\mathbf{w})}_{\text{모델을 단순하게}}$$
+
+-   $\lambda = 0$ — 기존 최소제곱법
+-   $\lambda \to \infty$ — 모든 계수가 0
+-   **W1의 Occam's razor를 수식으로 옮긴 것**
+-   $\lambda$ 는 hyper-parameter → 교차검증으로 결정(W3)
+
+------------------------------------------------------------------------
+
+## 2. Ridge, Lasso, Elastic Net 📉
+
+### 1) Ridge (L2 penalty)
+
+$$\min_{\mathbf{w}} \; \|\mathbf{y} - X\mathbf{w}\|^2 + \lambda \sum_{j=1}^{p} w_j^2$$
+
+-   계수를 **0에 가깝게** 줄이지만 정확히 0으로 만들지는 않음
+-   상관된 feature들에게 **가중치를 고르게 나눠 줌**
+-   닫힌 해 존재 — $(X^{\mathsf{T}}X + \lambda I)^{-1}X^{\mathsf{T}}\mathbf{y}$
+-   다중공선성 대응에 강함
+
+### 2) Lasso (L1 penalty)
+
+$$\min_{\mathbf{w}} \; \|\mathbf{y} - X\mathbf{w}\|^2 + \lambda \sum_{j=1}^{p} |w_j|$$
+
+-   계수를 **정확히 0으로** 만듦 → **내장된 feature selection**(W2의 embedded)
+-   닫힌 해 없음 — 좌표하강법 등 반복 알고리즘
+-   상관된 feature 그룹에서 **하나만 골라 나머지를 버림**
+
+### 3) 왜 L1만 0을 만드는가
+
+-   벌점을 제약으로 바꿔 보면 — L2는 **원**, L1은 **마름모**
+-   손실함수의 등고선이 제약 영역과 처음 닿는 지점이 해
+-   마름모는 **꼭짓점이 축 위에** 있음 → 닿기 쉬운 곳이 곧 $w_j = 0$
+-   원은 매끄러워 축에 닿을 확률이 사실상 0
+
+### 4) Elastic Net
+
+$$\lambda\Big[\alpha \sum |w_j| + \tfrac{1}{2}(1-\alpha)\sum w_j^2\Big]$$
+
+-   $\alpha = 1$ → Lasso, $\alpha = 0$ → Ridge
+-   상관된 feature를 **그룹으로 함께 선택**(grouping effect)
+-   pathway 단위로 공발현하는 오믹스 데이터에 적합
+
+### 5) 🧪 실습: 희소성 비교
+
+-   feature 500개, 그중 **진짜 신호는 10개**, 샘플 100개
+
+```{r}
+#| eval: true
+#| message: false
+library(glmnet)
+
+set.seed(2026)
+n <- 100; p <- 500
+X <- matrix(rnorm(n * p), n, p)
+beta_true <- c(rep(1.5, 10), rep(0, p - 10))
+y <- as.vector(X %*% beta_true) + rnorm(n, sd = 1)
+
+set.seed(1)
+cv_lasso <- cv.glmnet(X, y, alpha = 1)
+cv_ridge <- cv.glmnet(X, y, alpha = 0)
+cv_enet  <- cv.glmnet(X, y, alpha = 0.5)
+
+# lambda.min에서 0이 아닌 계수의 위치 (1~10번이 진짜 신호)
+selected <- function(cv) which(coef(cv, s = "lambda.min")[-1] != 0)
+fits <- list("Lasso (a=1)"         = cv_lasso,
+             "Elastic Net (a=0.5)" = cv_enet,
+             "Ridge (a=0)"         = cv_ridge)
+
+data.frame(
+  model        = names(fits),
+  n_nonzero    = sapply(fits, function(cv) length(selected(cv))),
+  true_signals = sapply(fits, function(cv) sum(selected(cv) <= 10)),
+  false_pos    = sapply(fits, function(cv) sum(selected(cv) >  10)),
+  row.names    = NULL
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.6
+# 위쪽 여백을 넉넉히 — glmnet은 상단 축에 nonzero 개수를 찍으므로 제목과 겹침
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 4.5, 1))
+
+plot(cv_lasso$glmnet.fit, xvar = "lambda")
+title("Lasso (L1)", line = 3)
+abline(v = log(cv_lasso$lambda.min), lty = 2)
+
+plot(cv_ridge$glmnet.fit, xvar = "lambda")
+title("Ridge (L2)", line = 3)
+abline(v = log(cv_ridge$lambda.min), lty = 2)
+```
+
+-   **Lasso** — 500개 중 39개만 살림. 진짜 신호 **10개를 모두 포함**, 위양성 29개
+-   **Ridge** — 500개 전부 0이 아님. 선택 기능 없음
+-   **Elastic Net** — 50개. 둘의 중간
+-   coefficient path 그림 — 왼쪽은 계수들이 하나씩 **0에서 이탈**, 오른쪽은 전부 매끄럽게 수축
+
+### 6) λ 선택
+
+```{r}
+#| eval: true
+data.frame(
+  criterion = c("lambda.min", "lambda.1se"),
+  lambda    = round(c(cv_lasso$lambda.min, cv_lasso$lambda.1se), 4),
+  n_nonzero = c(sum(coef(cv_lasso, s = "lambda.min")[-1] != 0),
+                sum(coef(cv_lasso, s = "lambda.1se")[-1] != 0))
+)
+```
+
+-   **`lambda.min`** — CV 오차가 최소인 지점. 성능 우선
+-   **`lambda.1se`** — 최소에서 표준오차 1개 이내의 가장 강한 벌점. **더 단순한 모델**
+-   바이오마커 패널처럼 **변수 수를 줄이는 것이 목적이면 `lambda.1se`**
+
+### 7) ⚠️ 반드시 지킬 것
+
+-   **표준화 필수** — 벌점이 계수 크기에 비례하므로 단위가 큰 변수만 벌을 받음
+    -   `glmnet`은 기본으로 표준화 후 원래 스케일로 되돌려 줌
+-   **λ 선택도 학습** — 전체 데이터로 λ를 고르고 같은 CV로 성능을 보고하면 낙관 편향(W3)
+    -   → **nested CV** 또는 별도 test set
+-   **선택된 변수는 불안정** — 표본을 바꾸면 목록이 달라짐
+    -   여러 fold에서 반복 선택된 변수만 보고할 것(W14)
+
+------------------------------------------------------------------------
+
+## 3. Linear Discriminant Analysis 📐
+
+### 1) 아이디어
+
+-   전통적 선형 학습법. 이진 분류에서는 **Fisher discriminant analysis**
+-   데이터를 **직선 하나에 정사영**했을 때 class가 가장 잘 갈리는 방향 $\mathbf{w}$ 를 찾음
+-   정사영한 값이 기준값보다 크면 class 1, 작으면 class 2
+
+### 2) 목적함수
+
+$$J(\mathbf{w}) = \frac{\mathbf{w}^{\mathsf{T}}S_B\mathbf{w}}{\mathbf{w}^{\mathsf{T}}S_W\mathbf{w}}$$
+
+-   $S_B = (\mathbf{m}_1 - \mathbf{m}_2)(\mathbf{m}_1 - \mathbf{m}_2)^{\mathsf{T}}$ — **between-class** 산포
+-   $S_W = \sum_i \sum_{\mathbf{x} \in C_i} (\mathbf{x} - \mathbf{m}_i)(\mathbf{x} - \mathbf{m}_i)^{\mathsf{T}}$ — **within-class** 산포
+-   해석 — **class 평균은 멀어지고, class 내부는 뭉치도록**
+
+### 3) 풀이
+
+-   $J(\mathbf{w})$ 를 최대화 → 일반화 고유값 문제
+-   해는 $\mathbf{w} \propto S_W^{-1}(\mathbf{m}_1 - \mathbf{m}_2)$
+-   ⚠️ $S_W^{-1}$ 이 필요 → **$p > n$ 이면 LDA도 실패** → 정규화 LDA, 대각 LDA
+
+### 4) 🧪 실습: LDA vs PCA — 분산이 큰 축이 정답인가
+
+-   분산이 **가장 큰 방향은 class와 무관**하고, class 차이는 분산이 작은 방향에 숨겨진 데이터
+
+```{r}
+#| eval: true
+#| message: false
+library(MASS)
+library(ggplot2)
+
+set.seed(2026)
+n <- 200
+g  <- rep(c("A", "B"), each = n / 2)
+z1 <- rnorm(n, sd = 3)                                  # 분산 큼, class와 무관
+z2 <- rnorm(n, sd = 1) + ifelse(g == "A", -1.2, 1.2)    # 분산 작음, class 정보
+
+d <- data.frame(x1 = z1 + z2, x2 = z1 - z2, g = factor(g))
+
+pca <- prcomp(d[, 1:2], scale. = FALSE)
+lda_fit <- lda(g ~ x1 + x2, data = d)
+
+unit <- function(v) v / sqrt(sum(v^2))
+project <- function(v) {
+  s <- as.matrix(d[, 1:2]) %*% v
+  abs(t.test(s ~ d$g)$statistic)
+}
+
+data.frame(
+  axis        = c("PC1 (unsupervised)", "LD1 (supervised)"),
+  direction   = c(paste(round(unit(pca$rotation[, 1]), 3), collapse = ", "),
+                  paste(round(unit(lda_fit$scaling[, 1]), 3), collapse = ", ")),
+  separation_t = round(c(project(pca$rotation[, 1]),
+                         project(lda_fit$scaling[, 1])), 2)
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.4
+ctr <- colMeans(d[, 1:2])
+v_pc <- unit(pca$rotation[, 1]); v_ld <- unit(lda_fit$scaling[, 1])
+
+p_scatter <- ggplot(d, aes(x1, x2, colour = g)) +
+  geom_point(alpha = .6, size = 1.2) +
+  geom_abline(slope = v_pc[2] / v_pc[1],
+              intercept = ctr[2] - v_pc[2] / v_pc[1] * ctr[1],
+              linetype = 2, linewidth = .8) +
+  geom_abline(slope = v_ld[2] / v_ld[1],
+              intercept = ctr[2] - v_ld[2] / v_ld[1] * ctr[1],
+              linewidth = .8) +
+  scale_colour_manual(values = c(A = "#2e8b7a", B = "#d1495b")) +
+  coord_equal() + theme_minimal() +
+  labs(colour = NULL, caption = "dashed = PC1   |   solid = LD1")
+
+proj_df <- rbind(
+  data.frame(axis = "PC1 (unsupervised)",
+             value = as.vector(as.matrix(d[, 1:2]) %*% v_pc), g = d$g),
+  data.frame(axis = "LD1 (supervised)",
+             value = as.vector(as.matrix(d[, 1:2]) %*% v_ld), g = d$g)
+)
+proj_df$axis <- factor(proj_df$axis, levels = c("PC1 (unsupervised)", "LD1 (supervised)"))
+
+ggplot(proj_df, aes(value, fill = g)) +
+  geom_density(alpha = .55, colour = NA) +
+  facet_wrap(~ axis, scales = "free") +
+  scale_fill_manual(values = c(A = "#2e8b7a", B = "#d1495b")) +
+  labs(x = "Projected value", y = "Density", fill = NULL) +
+  theme_minimal()
+```
+
+```{r}
+#| eval: true
+#| fig-width: 5
+#| fig-height: 4
+p_scatter
+```
+
+-   두 방향이 **거의 직교** — PC1 (0.751, 0.661), LD1 (0.726, −0.688)
+-   PC1 투영 $t = 1.92$ (거의 겹침) vs LD1 투영 $t = 16.2$ — **8배 차이**
+-   **PCA는 label을 보지 않는다.** 분산이 큰 축이 관심 있는 축이라는 보장은 없음
+
+### 5) 가정과 한계
+
+-   각 class가 **같은 공분산 구조**를 갖는다고 가정 → 다르면 QDA
+-   class당 평균이 비슷하면 무력 (W13의 PCA vs LDA 비교와 연결)
+-   장점 — 차원 축소와 분류를 동시에, 계산이 매우 빠름
+
+------------------------------------------------------------------------
+
+## 4. 다중분류 🔢
+
+class가 $N$ 개일 때, 이진 분류기를 조합해 푸는 전략들.
+
+| 전략 | 분류기 수 | 학습 방식 | 특징 |
+|------|-----------|----------|------|
+| **One-vs-One (OvO)** | $N(N-1)/2$ | class 쌍마다 하나 | 분류기는 많지만 각각 작고 빠름. 투표로 결정 |
+| **One-vs-Rest (OvR)** | $N$ | 한 class vs 나머지 전부 | 분류기 수가 적음. **각 문제가 불균형해짐** |
+| **ECOC** | 설계에 따름 | 코드워드로 인코딩 | 일부 분류기가 틀려도 **오류 정정** 가능 |
+| **Softmax** | 1 | 확률을 동시에 추정 | 확률의 합이 1. 로지스틱의 자연스러운 확장 |
+
+-   **OvR** — class 수가 많으면 각 이진 문제의 양성 비율이 $1/N$ → 5절의 불균형 문제 발생
+-   **ECOC** — 각 class에 이진 코드워드를 부여, 해밍 거리로 판정. 코드 설계가 성능을 좌우
+-   **Softmax** — $P(y = k \mid \mathbf{x}) = e^{z_k} / \sum_j e^{z_j}$. 확률이 필요하면 기본 선택
+-   실무 — 대부분의 라이브러리가 자동 처리하지만, **어느 방식인지 확인할 것**(확률 해석이 달라짐)
+
+------------------------------------------------------------------------
+
+## 5. Class Imbalance ⚖️
+
+### 1) 문제
+
+-   training sample의 class 분포가 크게 치우친 상태 (희귀질환, 약물 반응자)
+-   기본 임계값 0.5는 **다수 class에 유리하게 맞춰져 있음**
+-   결과 — 소수 class를 거의 예측하지 못함 (W4의 accuracy paradox)
+
+### 2) Threshold moving
+
+-   모델은 그대로 두고 **판정 기준만 옮김**
+-   odds에 class 비율을 보정
+
+$$\frac{y'}{1-y'} = \frac{y}{1-y} \times \frac{m^-}{m^+}$$
+
+-   $m^+, m^-$ — 소수·다수 class의 샘플 수
+-   또는 **training fold에서 F1·비용을 최대화하는 임계값을 직접 탐색**
+-   ✅ **예측확률을 건드리지 않음** → 보정(calibration)이 유지됨
+
+### 3) Undersampling
+
+-   다수 class를 줄여 비율을 맞춤
+-   단점 — 정보 손실
+-   **EasyEnsemble** — 다수 class를 여러 부분집합으로 나눠 각각 학습 후 ensemble (W9)
+
+### 4) Oversampling
+
+-   소수 class를 늘림
+-   **SMOTE** — 소수 class 샘플 사이를 **보간**해 합성 샘플 생성
+-   단점 — 합성 샘플이 실제 분포를 왜곡, 고차원에서 특히 불안정
+
+### 5) 🧪 실습: 세 전략의 대가
+
+-   유병률 약 7%, 로지스틱 회귀 하나로 세 전략을 비교
+
+```{r}
+#| eval: true
+set.seed(2026)
+n <- 4000
+d <- data.frame(x1 = rnorm(n), x2 = rnorm(n))
+d$y <- rbinom(n, 1, plogis(-3.2 + 1.2 * d$x1 + 0.8 * d$x2))
+tr <- 1:2000; te <- 2001:4000
+
+f1 <- function(pred, act) {
+  tp <- sum(pred == 1 & act == 1); fp <- sum(pred == 1 & act == 0)
+  fn <- sum(pred == 0 & act == 1)
+  if (tp == 0) return(0)
+  p <- tp / (tp + fp); r <- tp / (tp + fn); 2 * p * r / (p + r)
+}
+report <- function(p, thr, act, name) {
+  pred <- as.integer(p > thr); tp <- sum(pred == 1 & act == 1)
+  data.frame(strategy = name, threshold = round(thr, 3), n_flagged = sum(pred),
+             recall = round(tp / sum(act == 1), 3),
+             precision = round(tp / max(sum(pred), 1), 3),
+             F1 = round(f1(pred, act), 3),
+             mean_pred = round(mean(p), 3),
+             Brier = round(mean((p - act)^2), 4))
+}
+```
+
+```{r}
+#| eval: true
+m    <- glm(y ~ x1 + x2, data = d[tr, ], family = binomial)
+p_te <- predict(m, d[te, ], type = "response")
+p_tr <- predict(m, d[tr, ], type = "response")
+
+# ② training fold에서 F1을 최대화하는 임계값 탐색
+thrs <- seq(0.01, 0.9, by = 0.005)
+best <- thrs[which.max(sapply(thrs, function(t) f1(as.integer(p_tr > t), d$y[tr])))]
+
+# ③ 다수 class를 1:1로 다운샘플링 후 학습
+pos  <- tr[d$y[tr] == 1]
+neg  <- sample(tr[d$y[tr] == 0], length(pos))
+m_bal <- glm(y ~ x1 + x2, data = d[c(pos, neg), ], family = binomial)
+p_bal <- predict(m_bal, d[te, ], type = "response")
+
+rbind(
+  report(p_te,  0.5,  d$y[te], "1. Default threshold 0.5"),
+  report(p_te,  best, d$y[te], "2. Tuned threshold"),
+  report(p_bal, 0.5,  d$y[te], "3. Downsample 1:1")
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.5
+#| fig-height: 3.2
+sweep <- data.frame(threshold = thrs,
+                    F1 = sapply(thrs, function(t) f1(as.integer(p_te > t), d$y[te])))
+
+ggplot(sweep, aes(threshold, F1)) +
+  geom_line(linewidth = .9, colour = "#d1495b") +
+  geom_vline(xintercept = best, linetype = 2) +
+  geom_vline(xintercept = 0.5, linetype = 3, colour = "grey40") +
+  labs(x = "Decision threshold", y = "F1 (test set)",
+       caption = "dashed = tuned on training   |   dotted = default 0.5") +
+  theme_minimal()
+```
+
+-   **기본 0.5** — 실제 환자의 **13%만** 찾아냄. F1 0.209
+-   **임계값 조정** — F1 0.344로 개선. 그리고 **Brier score는 0.0575 그대로**
+-   **다운샘플링** — recall 0.793으로 가장 높지만 precision 0.186, F1은 0.301로 오히려 낮음
+    -   평균 예측확률 0.366 vs 실제 유병률 0.072 → **Brier 0.0575 → 0.1798로 3배 악화**
+-   ✅ **임계값 조정이 성능도 좋고 확률도 지킨다**
+
+::: {.callout-warning}
+## ⚠️ 불균형 처리의 원칙
+
+-   **확률이 필요한가?** 임상 위험도·자원 배분에 쓸 것이면 → 재샘플링 금지, threshold moving
+-   **순위만 필요한가?** 상위 k개만 뽑을 것이면 → 재샘플링도 무방(하지만 이득도 적음)
+-   재샘플링을 했다면 **반드시 재보정**(W4의 Platt scaling / isotonic)
+-   재샘플링은 **전처리다** — training fold 안에서만(W2). test fold에는 절대 적용 금지
+-   불균형 그 자체는 문제가 아니다. **문제는 임계값과 지표 선택**
+:::
+
+::: {.callout-important}
+## Where this ends up
+
+-   Ridge·Lasso의 벌점이 사실 **prior**라는 것 → W11 (MAP)
+-   EasyEnsemble, 그리고 variance를 깎는 전략 → W9
+-   LDA의 정사영 아이디어 → W13 (PCA vs LDA)
+-   선택된 변수의 안정성 보고 → W14
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   $p > n$ 이면 $X^{\mathsf{T}}X$ 의 역행렬이 없음 → **대각선에 λ를 더하면 항상 풀림**
+-   **Ridge(L2)** — 0에 가깝게 수축, 상관 변수에 가중치 분산, 다중공선성에 강함
+-   **Lasso(L1)** — 정확히 0으로. 마름모 제약의 **꼭짓점이 축 위**에 있기 때문
+-   실습 — 500개 중 Lasso는 39개 선택(진짜 10개 모두 포함), Ridge는 500개 전부 유지
+-   **Elastic Net** — 상관된 feature를 그룹으로 선택. 오믹스에 적합
+-   λ는 CV로 — 변수 수를 줄이려면 **`lambda.1se`**
+-   **LDA는 supervised, PCA는 아니다** — 같은 데이터에서 분리력 $t$ 1.92 vs 16.2
+-   다중분류 — OvR은 각 문제가 불균형해짐, 확률이 필요하면 softmax
+-   **불균형: 임계값 조정이 F1도 올리고 Brier도 지킨다.** 다운샘플링은 확률을 3배 망가뜨림
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Shrinkage** | 벌점으로 계수를 0 쪽으로 수축시키는 것 |
+| **Ridge (L2)** | 계수 제곱합 벌점. 0으로 만들지 않음. 닫힌 해 존재 |
+| **Lasso (L1)** | 계수 절댓값합 벌점. 정확히 0을 만듦 (feature selection) |
+| **Elastic Net** | L1·L2 혼합. 상관된 feature를 그룹으로 선택 |
+| **lambda.1se** | CV 최소에서 표준오차 1개 이내의 가장 강한 벌점. 더 단순한 모델 |
+| **S_B / S_W** | between-class / within-class 산포 행렬 |
+| **LDA** | $S_B$ 는 키우고 $S_W$ 는 줄이는 방향으로 정사영하는 supervised 방법 |
+| **OvO / OvR / ECOC** | 다중분류를 이진 분류기 조합으로 푸는 전략 |
+| **Threshold moving** | 모델은 두고 판정 임계값만 조정. 확률을 보존 |
+| **SMOTE** | 소수 class 샘플 사이를 보간해 합성 샘플을 만드는 oversampling |
+
+## ➕ References
+
+-   Hoerl AE, Kennard RW. Ridge regression: biased estimation for nonorthogonal problems. *Technometrics* 1970;12(1):55–67.
+-   Tibshirani R. Regression shrinkage and selection via the lasso. *JRSS-B* 1996;58(1):267–288.
+-   Zou H, Hastie T. Regularization and variable selection via the elastic net. *JRSS-B* 2005;67(2):301–320.
+-   Friedman J, Hastie T, Tibshirani R. Regularization paths for generalized linear models via coordinate descent. *Journal of Statistical Software* 2010;33(1):1–22.
+-   Fisher RA. The use of multiple measurements in taxonomic problems. *Annals of Eugenics* 1936;7(2):179–188.
+-   Dietterich TG, Bakiri G. Solving multiclass learning problems via error-correcting output codes. *JAIR* 1995;2:263–286.
+-   Chawla NV, Bowyer KW, Hall LO, Kegelmeyer WP. SMOTE: Synthetic Minority Over-sampling Technique. *JAIR* 2002;16:321–357.
+-   Liu XY, Wu J, Zhou ZH. Exploratory undersampling for class-imbalance learning. *IEEE TSMC-B* 2009;39(2):539–550.
+-   van den Goorbergh R, van Smeden M, Timmerman D, Van Calster B. The harm of class imbalance corrections for risk prediction models. *JAMIA* 2022;29(9):1525–1534.
+
+------------------------------------------------------------------------
+
+[← W5. 선형회귀와 로지스틱회귀](05_linear_model.qmd)

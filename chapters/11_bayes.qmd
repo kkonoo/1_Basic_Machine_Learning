@@ -1,0 +1,1469 @@
+---
+title: "W11. Bayesian Classifier"
+description: "Bayes 결정이론, MLE와 MAP, naive Bayes, semi-naive Bayes, Bayesian network, EM"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W11. Bayesian Classifier">
+        <meta name="ai-context" content="
+        이 챕터는 베이즈 결정이론과 베이즈 분류기를 다룹니다.
+        사후확률은 likelihood 곱하기 prior를 정규화 상수로 나눈 것입니다.
+        조건부 위험을 최소화하는 분류기가 Bayes optimal classifier이고
+        0-1 손실에서는 사후확률이 최대인 label을 고르는 것과 같습니다.
+        그때의 오차가 Bayes risk이고 어떤 분류기도 그보다 잘할 수 없습니다.
+        실습에서 진짜 분포를 우리가 정하면 Bayes error는 0.2023이고
+        정확도 상한은 0.7977입니다. 로지스틱은 0.7929, kNN은 0.7906,
+        트리는 0.7919로 모두 그 밑에 모입니다.
+        손실이 비대칭이면 임계값이 1 나누기 1 더하기 손실비로 옮겨갑니다.
+        놓치는 비용이 10배면 임계값이 0.091이 되고 민감도는 0.986까지 오르지만
+        특이도는 0.293으로 떨어집니다.
+        판별 모델은 사후확률을 직접 학습하고 생성 모델은 결합분포를 모델링합니다.
+        MLE는 데이터만 쓰고 Gaussian 잡음을 가정하면 로그를 취한 순간 L2 손실이 됩니다.
+        실습에서 optim으로 구한 MLE 계수가 lm의 OLS 계수와 소수점 넷째 자리까지 같습니다.
+        MAP는 parameter에 사전분포를 겁니다.
+        weight에 Gaussian prior를 걸면 정확히 ridge가 되고 lambda는 sigma 제곱 나누기
+        sigma_w 제곱입니다. 실습에서 sigma_w가 0.1이면 lambda가 64이고
+        MAP 계수와 ridge 닫힌 해가 완전히 일치합니다.
+        Laplace prior를 걸면 lasso가 됩니다. Laplace는 0에서 뾰족해서 계수를 정확히 0으로 만듭니다.
+        p가 200이고 n이 60일 때 lasso는 186개를 정확히 0으로 만들고 ridge는 하나도 0이 아닙니다.
+        naive Bayes는 모든 feature가 class가 주어지면 조건부 독립이라고 가정합니다.
+        그러면 결합확률이 개별 확률의 곱으로 쪼개져 추정이 가능해집니다.
+        임상 범주형 데이터 실습에서 naive Bayes 0.7672, 로지스틱 0.7675로 사실상 같습니다.
+        Laplace smoothing은 학습 데이터에 없는 조합의 확률이 0이 되어 곱 전체를 0으로
+        만드는 것을 막습니다. lambda가 0이면 사후확률이 정확히 0이 됩니다.
+        SNP 1000개 데이터에서 빈 칸이 5개뿐인데도 lambda 0이면 정확도가 0.5305이고
+        lambda 20이면 0.5692입니다.
+        Gaussian naive Bayes는 class별 대각 공분산을 가정해 경계가 이차식이 됩니다.
+        실습에서 Gaussian NB 0.8790, LDA 0.8732, QDA 0.9080입니다.
+        semi-naive Bayes는 독립 가정을 일부만 완화합니다.
+        SPODE는 모든 feature가 하나의 super-parent에 의존한다고 보고
+        AODE는 각 feature를 super-parent로 한 SPODE를 모두 평균냅니다.
+        중복 feature 실습에서 복제 확률이 0.95가 되면 naive Bayes는 0.8268에서
+        0.6648로 무너지지만 AODE는 0.8155를 유지합니다.
+        naive Bayes는 중복을 여러 번 세기 때문에 과신합니다. Brier가 0.1804 대 0.1437입니다.
+        Bayesian network는 DAG 구조와 조건부확률표로 결합분포를 분해합니다.
+        젖은 잔디 예제에서 P(rain)은 0.2인데 잔디가 젖은 것을 보면 0.35769로 오릅니다.
+        그런데 스프링클러가 켜져 있던 것까지 알면 0.00683으로 떨어집니다. explaining away입니다.
+        d-분리는 선형 분기 합류 세 가지 연결로 독립성을 읽는 규칙입니다.
+        합류 node를 조건으로 두면 막혀 있던 경로가 오히려 열립니다. collider bias입니다.
+        실습에서 서로 독립인 두 변수의 상관은 0.028인데 합류 node를 좁은 구간으로
+        고정하면 상관이 마이너스 0.8411이 됩니다.
+        구조 학습은 NP-hard라 greedy로 풉니다.
+        n이 5000일 때 빈 그래프에서 출발한 greedy는 엉뚱한 곳에 갇히지만
+        random restart를 8번 주면 진짜 DAG를 정확히 복원합니다.
+        EM은 숨은 변수가 있을 때 E단계와 M단계를 번갈아 돌려 log likelihood를 단조 증가시킵니다.
+        label이 40개뿐일 때 0.7522인데 unlabeled 560개를 EM으로 쓰면 0.7732가 되고
+        전부 label이 있을 때는 0.7847입니다.
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   **Bayes 최적 분류기와 Bayes risk가 무엇인지 설명하고, 왜 그것이 성능의 상한인지 말할 수 있다**
+-   손실이 비대칭일 때 결정 임계값이 어떻게 옮겨가는지 계산할 수 있다
+-   **MLE와 MAP의 차이를 말하고, MAP가 곧 정규화임을 유도할 수 있다**
+-   Gaussian prior → Ridge, Laplace prior → Lasso 연결을 설명할 수 있다
+-   **naive Bayes의 조건부 독립 가정이 무엇을 사고 무엇을 파는지 설명할 수 있다**
+-   Laplace smoothing이 왜 필요한지, 언제 효과가 있는지 판단할 수 있다
+-   semi-naive Bayes(SPODE·AODE)가 독립 가정을 어떻게 완화하는지 설명할 수 있다
+-   **Bayesian network의 d-분리를 읽고, 합류(collider)를 조건으로 두면 안 되는 이유를 말할 수 있다**
+-   EM이 숨은 변수를 어떻게 다루는지 설명할 수 있다
+:::
+
+> 🤔 **"이 환자가 반응할 확률은 얼마인가?" — 이 질문에 답하려면, 모델이 무엇을 알아야 할까?**
+
+------------------------------------------------------------------------
+
+## 1. Bayesian decision theory 🎲
+
+### 1) 세 개의 확률
+
+| 이름 | 기호 | 의미 |
+|---|---|---|
+| **Prior** | $P(c)$ | 데이터를 보기 전, class $c$ 가 나올 확률 |
+| **Likelihood** (class-conditional) | $P(\mathbf{x} \mid c)$ | class가 $c$ 일 때 이런 데이터가 나올 확률 |
+| **Evidence** | $P(\mathbf{x})$ | 정규화 상수. $\sum_c P(\mathbf{x}\mid c)P(c)$ |
+| **Posterior** | $P(c \mid \mathbf{x})$ | 데이터를 보고 난 뒤의 class 확률 |
+
+$$P(c \mid \mathbf{x}) \;=\; \frac{P(\mathbf{x}\mid c)\,P(c)}{P(\mathbf{x})} \;=\; \frac{\text{Likelihood} \times \text{Prior}}{\text{Normalization factor}}$$
+
+분모는 $c$ 에 의존하지 않으므로, **어느 class를 고를지만 정할 때는 분자만 비교하면 됩니다.**
+
+### 2) Conditional risk
+
+$\lambda_{ij}$ 를 "실제 $c_j$ 인데 $c_i$ 로 판정했을 때의 손실"이라 하면, 샘플 $\mathbf{x}$ 를 $c_i$ 로 판정할 때의 **조건부 위험**은
+
+$$R(c_i \mid \mathbf{x}) = \sum_{j=1}^{N} \lambda_{ij}\, P(c_j \mid \mathbf{x})$$
+
+0-1 손실($\lambda_{ij} = \mathbb{1}[i \ne j]$)이면 $R(c \mid \mathbf{x}) = 1 - P(c \mid \mathbf{x})$ 로 줄어듭니다.
+
+### 3) Bayes optimal classifier와 Bayes risk
+
+$$h^*(\mathbf{x}) = \arg\min_{c} R(c\mid\mathbf{x}) \;\;\overset{\text{0-1 loss}}{\longrightarrow}\;\; h^*(\mathbf{x}) = \arg\max_{c} P(c\mid\mathbf{x})$$
+
+-   $R(h^*)$ 를 **Bayes risk**라 하고, $1 - R(h^*)$ 가 **어떤 분류기도 넘을 수 없는 정확도 상한**입니다
+-   ⚠️ 이 상한은 진짜 분포를 알아야 계산됩니다. 실제 데이터에서는 알 수 없고, **"내 모델이 아직 못 짜낸 것"과 "원래 짜낼 수 없는 것"을 구분하는 개념 장치**로 씁니다
+
+### 4) 🧪 실습: Bayes 상한은 정말 상한인가
+
+진짜 분포를 **우리가 정하면** Bayes error를 손으로 계산할 수 있습니다. 그 분포에서 표본을 뽑아 여러 분류기를 학습시켜 보겠습니다.
+
+```{r}
+#| eval: true
+#| message: false
+mu0 <- -1; mu1 <- 1; sdv <- 1.2
+pi0 <- 0.5; pi1 <- 0.5
+bnd <- 0   # 등분산 + 등사전확률이면 최적 경계는 두 평균의 중점
+
+# Bayes error = integral of min( p(x|c) p(c) )
+bayes_err <- pi1 * pnorm(bnd, mu1, sdv) + pi0 * (1 - pnorm(bnd, mu0, sdv))
+c(bayes_error = round(bayes_err, 4), accuracy_limit = round(1 - bayes_err, 4))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.4
+#| fig-height: 4
+#| message: false
+library(ggplot2)
+xs <- seq(-5, 5, length.out = 600)
+dd <- rbind(
+  data.frame(x = xs, dens = dnorm(xs, mu0, sdv) * pi0, class = "class 0"),
+  data.frame(x = xs, dens = dnorm(xs, mu1, sdv) * pi1, class = "class 1"))
+ov <- data.frame(x = xs,
+                 lo = pmin(dnorm(xs, mu0, sdv) * pi0, dnorm(xs, mu1, sdv) * pi1))
+
+ggplot(dd, aes(x, dens, colour = class)) +
+  geom_area(data = ov, aes(x, lo), inherit.aes = FALSE,
+            fill = "#7d8597", alpha = .45) +
+  geom_line(linewidth = .9) +
+  geom_vline(xintercept = bnd, linetype = 2, colour = "grey30") +
+  scale_colour_manual(values = c("class 0" = "#2e8b7a", "class 1" = "#d1495b")) +
+  labs(x = "x", y = "p(x | c) P(c)", colour = NULL,
+       caption = "grey area = Bayes error; dashed = Bayes optimal boundary") +
+  theme_minimal()
+```
+
+```{r}
+#| eval: true
+#| message: false
+library(class); library(rpart)
+set.seed(11)
+gen <- function(n) {
+  y <- rbinom(n, 1, pi1)
+  data.frame(x = rnorm(n, ifelse(y == 1, mu1, mu0), sdv), y = factor(y))
+}
+tr <- gen(400); te <- gen(20000)
+
+p_bayes <- factor(as.integer(te$x > bnd), levels = c(0, 1))
+g  <- glm(y ~ x, data = tr, family = binomial)
+p_logit <- factor(as.integer(predict(g, te, type = "response") > .5), levels = c(0,1))
+p_knn  <- knn(as.matrix(tr$x), as.matrix(te$x), tr$y, k = 25)
+p_tree <- predict(rpart(y ~ x, data = tr, method = "class"), te, type = "class")
+
+acc <- function(p) mean(p == te$y)
+data.frame(
+  classifier = c("Bayes optimal (knows truth)", "Logistic regression",
+                 "kNN (k=25)", "Decision tree"),
+  test_accuracy = round(c(acc(p_bayes), acc(p_logit), acc(p_knn), acc(p_tree)), 4),
+  gap_to_limit  = round(1 - bayes_err -
+                        c(acc(p_bayes), acc(p_logit), acc(p_knn), acc(p_tree)), 4))
+```
+
+-   정확도 상한은 **0.7977**이고, 세 분류기가 모두 **0.79 근처에 모입니다**
+-   ✅ **이 데이터에서 0.85를 내겠다는 목표는 불가능합니다.** 남은 0.2는 모델이 부족해서가 아니라 **두 분포가 겹쳐 있어서**입니다
+-   Bayes 최적 분류기조차 유한한 test set에서는 0.7942로 상한과 조금 어긋납니다 — 그건 표본오차입니다
+-   ⚠️ 성능이 안 오를 때 모델을 더 키우기 전에, **애초에 얼마나 오를 수 있는 문제인가**를 물어야 합니다
+
+### 5) 🧪 실습: 손실이 비대칭이면 임계값이 움직인다
+
+암 검진처럼 **놓치는 비용(FN)이 오경보(FP)보다 훨씬 클 때**, 0-1 손실의 0.5 임계값은 더 이상 최적이 아닙니다. $\lambda_{\text{FN}} = L$, $\lambda_{\text{FP}} = 1$ 이면
+
+$$R(1\mid\mathbf{x}) < R(0\mid\mathbf{x}) \;\Longleftrightarrow\; P(1\mid\mathbf{x}) > \frac{1}{1+L}$$
+
+```{r}
+#| eval: true
+post1 <- function(x) {
+  d1 <- dnorm(x, mu1, sdv) * pi1; d0 <- dnorm(x, mu0, sdv) * pi0
+  d1 / (d1 + d0)
+}
+do.call(rbind, lapply(c(1, 2, 5, 10), function(L) {
+  thr  <- 1 / (1 + L)
+  pred <- factor(as.integer(post1(te$x) > thr), levels = c(0,1))
+  fn <- sum(pred == 0 & te$y == 1); fp <- sum(pred == 1 & te$y == 0)
+  data.frame(loss_FN = L, threshold = round(thr, 3),
+             sensitivity = round(sum(pred==1 & te$y==1)/sum(te$y==1), 3),
+             specificity = round(sum(pred==0 & te$y==0)/sum(te$y==0), 3),
+             accuracy = round(mean(pred == te$y), 4),
+             expected_risk = round((fp * 1 + fn * L) / nrow(te), 4))
+}))
+```
+
+-   $L = 10$ 이면 임계값이 **0.091**로 내려가 민감도가 0.794 → **0.986**이 됩니다
+-   그 대가로 특이도는 0.795 → **0.293**, 정확도는 0.7942 → **0.6424**로 떨어집니다
+-   ✅ **정확도가 낮아진 게 잘못된 게 아닙니다.** 우리가 최소화하기로 한 것이 정확도가 아니라 위험이기 때문입니다
+-   ⚠️ 표에서 `expected_risk`가 $L$ 과 함께 커지는 것은 손실의 **단위 자체가 커져서**입니다. 같은 $L$ 안에서 임계값끼리만 비교해야 합니다
+-   이것이 W6의 **threshold-moving**과 정확히 같은 계산입니다
+
+### 6) Discriminative vs generative
+
+| | Discriminative | Generative |
+|---|---|---|
+| 모델링 대상 | $P(c\mid\mathbf{x})$ 를 **직접** | 결합분포 $P(\mathbf{x}, c)$ |
+| 학습하는 것 | 결정경계 | 각 class가 데이터를 만드는 방식 |
+| 예 | 로지스틱회귀, 결정트리, SVM, 신경망 | **naive Bayes**, LDA, GMM, topic model |
+| label 필요 | 반드시 | 없어도 구조 학습 가능 (준지도) |
+| 강점 | 데이터가 많으면 더 정확 | **가정이 맞으면 소표본에 강함**, 새 샘플 생성 가능 |
+| 약점 | 확률 해석·생성 불가 | 가정이 틀리면 편향 |
+
+✅ **이 챕터의 주인공은 generative 쪽입니다.** 그런데 $P(\mathbf{x}\mid c)$ 를 그대로 추정하는 건 불가능합니다 — feature가 $d$ 개면 조합이 $2^d$ 개인데 샘플은 그보다 훨씬 적습니다($N \ll 2^d$). 4절의 naive Bayes는 **이 벽을 독립 가정으로 뚫습니다.**
+
+------------------------------------------------------------------------
+
+## 2. Maximum likelihood와 MAP 📐
+
+### 1) Likelihood
+
+분포의 **형태를 가정**하고($\theta_c$ 로 모수화), 그 모수를 표본으로 추정합니다.
+
+$$P(\mathbf{x}\mid c) = P(\mathbf{x}\mid \theta_c), \qquad \theta_c = (\theta_1, \ldots, \theta_d)$$
+
+### 2) MLE — frequentist
+
+-   모수는 **unknown but fixed**. 데이터만이 말한다
+-   회귀에서 잡음이 $\mathcal{N}(0,\sigma^2)$ 이라 가정하면
+
+$$p(D\mid \mathbf{w}) = \prod_{i=1}^{N} \frac{1}{\sqrt{2\pi}\sigma}\exp\!\left(-\frac{(t_i - y(\mathbf{x}_i\mid\mathbf{w}))^2}{2\sigma^2}\right)$$
+
+로그를 취하면
+
+$$\log p(D\mid\mathbf{w}) = \sum_{i=1}^{N}\left\{-\log(\sqrt{2\pi}\sigma) - \frac{(t_i - y(\mathbf{x}_i\mid\mathbf{w}))^2}{2\sigma^2}\right\}$$
+
+상수를 떼면 남는 것이 $\sum_i (t_i - y(\mathbf{x}_i\mid\mathbf{w}))^2$ — ✅ **L2 loss(최소제곱)입니다.**
+
+::: {.callout-important}
+## W5가 여기서 다시 설명됩니다
+
+W5에서 "MSE를 최소화한다"고 했던 것은 사실 **"잡음이 정규분포라고 가정하고 likelihood를 최대화한다"**였습니다. 로지스틱회귀의 log loss도 마찬가지로 **Bernoulli likelihood의 음의 로그**입니다. 손실함수는 임의로 고른 게 아니라 **분포 가정에서 유도된 것**입니다.
+:::
+
+### 3) 🧪 실습: MLE 계수 = `lm()` 계수
+
+```{r}
+#| eval: true
+set.seed(2)
+n <- 120
+X <- cbind(1, rnorm(n), rnorm(n))
+beta_true <- c(1, 2, -1.5)
+yv <- as.vector(X %*% beta_true) + rnorm(n, 0, 0.8)
+
+# Gaussian 잡음 가정의 negative log-likelihood (sigma도 같이 추정)
+nll <- function(par) {
+  b <- par[1:3]; s <- exp(par[4]); r <- yv - X %*% b
+  n * log(s) + n/2 * log(2*pi) + sum(r^2) / (2 * s^2)
+}
+opt <- optim(c(0,0,0,0), nll, method = "BFGS", control = list(reltol = 1e-12))
+lmf <- lm(yv ~ X[,2] + X[,3])
+
+data.frame(term = c("(Intercept)", "x1", "x2"), true = beta_true,
+           MLE_by_optim = round(opt$par[1:3], 4),
+           OLS_by_lm    = round(unname(coef(lmf)), 4))
+```
+
+```{r}
+#| eval: true
+c(sigma_MLE_divide_by_n  = round(exp(opt$par[4]), 4),
+  sqrt_RSS_over_n        = round(sqrt(sum(residuals(lmf)^2)/n), 4),
+  sigma_lm_divide_by_nmp = round(summary(lmf)$sigma, 4))
+```
+
+-   계수는 **소수점 넷째 자리까지 완전히 일치**합니다. `lm()`은 MLE를 푸는 것과 같은 일을 합니다
+-   ⚠️ **$\sigma$ 는 다릅니다.** MLE는 $\sqrt{\text{RSS}/n} = 0.7501$, `lm()`은 $\sqrt{\text{RSS}/(n-p)} = 0.7597$
+-   MLE의 분산 추정은 **편향**되어 있습니다(작게 나옴). `lm()`은 불편추정량을 씁니다 — 계수는 같아도 표준오차·$p$-값은 여기서 갈립니다
+
+### 4) MAP — Bayesian
+
+-   모수도 **분포를 가진다**. 사전 지식을 $p(\mathbf{w})$ 로 넣는다
+
+$$p(\mathbf{w}\mid D) = \frac{p(D\mid\mathbf{w})p(\mathbf{w})}{\int p(D\mid\mathbf{w})p(\mathbf{w})\,d\mathbf{w}} \;\propto\; p(D\mid\mathbf{w})\,p(\mathbf{w})$$
+
+$\mathbf{w} \sim \mathcal{N}(0, \sigma_w^2)$ 를 걸고 로그를 취하면
+
+$$\mathbf{w}^* = \arg\max_{\mathbf{w}}\left\{\log p(D\mid\mathbf{w}) + \log p(\mathbf{w})\right\}
+= \arg\min_{\mathbf{w}}\left\{\underbrace{\sum_i (t_i - y_i)^2}_{L(\mathbf{w})} + \frac{\sigma^2}{\sigma_w^2}\|\mathbf{w}\|^2\right\}$$
+
+✅ **정확히 Ridge입니다.** 그리고 정규화 강도는 우연한 튜닝 상수가 아니라
+
+$$\boxed{\;\lambda = \frac{\sigma^2}{\sigma_w^2}\;}$$
+
+**"잡음의 크기 대비 계수가 얼마나 클 수 있다고 믿는가"**입니다.
+
+### 5) 🧪 실습: MAP 해 = Ridge 닫힌 해
+
+```{r}
+#| eval: true
+sig <- 0.8
+ridge_cf <- function(lambda) {
+  P <- diag(c(0, lambda, lambda))          # 절편은 벌하지 않는다
+  as.vector(solve(t(X) %*% X + P, t(X) %*% yv))
+}
+map_cf <- function(sw) {
+  f <- function(b) sum((yv - X %*% b)^2)/(2*sig^2) + sum(b[2:3]^2)/(2*sw^2)
+  optim(c(0,0,0), f, method = "BFGS", control = list(reltol = 1e-14))$par
+}
+do.call(rbind, lapply(c(0.1, 0.3, 1, 3, 1e6), function(sw) {
+  lam <- sig^2 / sw^2; m <- map_cf(sw); r <- ridge_cf(lam)
+  data.frame(sigma_w = if (sw > 1e5) "Inf" else format(sw),
+             lambda  = if (sw > 1e5) "0"   else format(round(lam, 3)),
+             MAP_x1 = round(m[2], 4), ridge_x1 = round(r[2], 4),
+             MAP_x2 = round(m[3], 4), ridge_x2 = round(r[3], 4))
+}))
+```
+
+-   MAP와 ridge가 **모든 $\sigma_w$ 에서 소수점 넷째 자리까지 같습니다**
+-   $\sigma_w = 0.1$ (계수가 작다고 강하게 믿음) → $\lambda = 64$ → 계수가 1.9592에서 **1.3807로 수축**
+-   $\sigma_w \to \infty$ (아무 믿음 없음, **flat prior**) → $\lambda = 0$ → **MLE로 돌아갑니다**
+-   ✅ **MLE는 "prior가 없는 MAP"입니다.** 두 학파의 차이가 수식 한 항으로 정리됩니다
+
+------------------------------------------------------------------------
+
+## 3. Regularization 다시 보기 — 왜 하필 그 페널티인가 🔁
+
+W6에서 Ridge와 Lasso를 "계수를 줄이는 벌점"으로 배웠습니다. 2절의 눈으로 보면 **벌점의 모양은 곧 prior의 모양**입니다.
+
+| Prior $p(w)$ | $-\log p(w)$ | 페널티 | 이름 |
+|---|---|---|---|
+| $\mathcal{N}(0,\sigma_w^2)$ | $\dfrac{w^2}{2\sigma_w^2} + \text{const}$ | $\lambda \sum w^2$ | **Ridge (L2)** |
+| $\text{Laplace}(0, b)$ | $\dfrac{|w|}{b} + \text{const}$ | $\lambda \sum |w|$ | **Lasso (L1)** |
+| Flat | 상수 | 없음 | MLE / OLS |
+
+$$\lambda_{\text{ridge}} = \frac{\sigma^2}{\sigma_w^2}, \qquad \lambda_{\text{lasso}} = \frac{\sigma^2}{b}$$
+
+### 1) 🧪 실습: 두 prior는 어디가 다른가
+
+```{r}
+#| eval: true
+#| fig-width: 7.2
+#| fig-height: 3.5
+#| message: false
+library(ggplot2)
+b <- sqrt(1/2)                       # 분산을 1로 맞춘 Laplace scale
+xs <- seq(-4, 4, length.out = 800)
+pd <- rbind(
+  data.frame(x = xs, v = dnorm(xs, 0, 1),            prior = "Gaussian (-> Ridge)",  panel = "density  p(w)"),
+  data.frame(x = xs, v = exp(-abs(xs)/b)/(2*b),      prior = "Laplace (-> Lasso)",   panel = "density  p(w)"),
+  data.frame(x = xs, v = xs^2/2,                     prior = "Gaussian (-> Ridge)",  panel = "penalty  -log p(w)"),
+  data.frame(x = xs, v = abs(xs)/b,                  prior = "Laplace (-> Lasso)",   panel = "penalty  -log p(w)"))
+pd$panel <- factor(pd$panel, levels = c("density  p(w)", "penalty  -log p(w)"))
+
+ggplot(pd, aes(x, v, colour = prior)) +
+  geom_line(linewidth = .9) +
+  facet_wrap(~ panel, scales = "free_y") +
+  scale_colour_manual(values = c("Gaussian (-> Ridge)" = "#2e8b7a",
+                                 "Laplace (-> Lasso)"  = "#d1495b")) +
+  labs(x = "w", y = NULL, colour = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+```{r}
+#| eval: true
+data.frame(
+  w = c(0, 3),
+  Gaussian = round(c(dnorm(0, 0, 1), dnorm(3, 0, 1)), 6),
+  Laplace  = round(c(1/(2*b), exp(-3/b)/(2*b)), 6),
+  ratio_Laplace_over_Gaussian = round(c((1/(2*b))/dnorm(0,0,1),
+                                        (exp(-3/b)/(2*b))/dnorm(3,0,1)), 3))
+```
+
+-   ✅ Laplace는 **0에서 미분 불가능한 첨점**을 가집니다. 이 뾰족함이 **계수를 정확히 0으로 밀어넣는 힘**입니다
+-   Gaussian은 어디서나 매끄러워 **0 근처로 수축시킬 뿐 0으로 만들지는 못합니다**
+-   Laplace는 꼬리가 두꺼워(0.010161 vs 0.004432) **큰 계수 몇 개는 덜 벌합니다** — sparse + 큰 효과라는 믿음
+
+### 2) 🧪 실습: $p \gg n$ 에서 두 prior의 결과
+
+```{r}
+#| eval: true
+#| message: false
+library(glmnet)
+set.seed(33)
+np <- 60; pp <- 200; k <- 5
+Xw <- matrix(rnorm(np*pp), np, pp)
+bt <- rep(0, pp); bt[1:k] <- c(2.5, -2, 1.8, -1.5, 1.2)
+yw <- as.vector(Xw %*% bt) + rnorm(np, 0, 1)
+
+cl <- as.vector(coef(cv.glmnet(Xw, yw, alpha = 1, nfolds = 10), s = "lambda.min"))[-1]
+cr <- as.vector(coef(cv.glmnet(Xw, yw, alpha = 0, nfolds = 10), s = "lambda.min"))[-1]
+
+data.frame(
+  prior = c("Laplace  (L1, lasso)", "Gaussian (L2, ridge)"),
+  exactly_zero = c(sum(cl == 0), sum(cr == 0)),
+  nonzero = c(sum(cl != 0), sum(cr != 0)),
+  true5_recovered = c(sum(cl[1:k] != 0), sum(cr[1:k] != 0)),
+  max_abs_noise_coef = round(c(max(abs(cl[(k+1):pp])), max(abs(cr[(k+1):pp]))), 4))
+```
+
+-   Laplace prior는 200개 중 **186개를 정확히 0**으로 만들고, 진짜 5개를 **모두 살립니다**
+-   Gaussian prior는 **하나도 0이 아닙니다**. 다만 잡음 계수의 최대 크기는 0.2093으로 lasso(0.2140)보다 오히려 조금 작습니다
+-   ✅ **Lasso가 "더 세게 줄인다"가 아니라 "정확히 0으로 보낼 수 있다"가 차이입니다.** 변수 선택이 필요하면 Laplace, 예측만 필요하면 Gaussian도 나쁘지 않습니다
+
+::: {.callout-tip}
+## 이 연결이 실무에서 쓰이는 곳
+
+-   $\lambda$ 를 "믿음의 세기"로 번역할 수 있습니다 — 사전 연구에서 효과 크기를 안다면 $\sigma_w$ 를 직접 정할 수 있습니다
+-   Bayesian 회귀(`rstanarm`, `brms`)에서 prior를 바꾸는 것이 곧 벌점을 바꾸는 것입니다
+-   **Horseshoe prior**는 0 근처에 더 날카로운 봉우리 + 더 두꺼운 꼬리를 줘서 $p \gg n$ 오믹스에서 lasso보다 나은 경우가 많습니다
+:::
+
+------------------------------------------------------------------------
+
+## 4. Naïve Bayes classifier 🍉
+
+### 1) 왜 "naive"한 가정이 필요한가
+
+$P(\mathbf{x}\mid c)$ 를 그대로 추정하려면 feature 조합마다 확률이 필요합니다. 이진 feature가 $d$ 개면 $2^d$ 개 — $d = 30$ 이면 10억 개입니다. 샘플은 그보다 한참 적습니다.
+
+**Naïve 가정** — class가 주어지면 모든 feature는 **조건부 독립**이다.
+
+$$P(x_1, \ldots, x_d \mid c) = \prod_{i=1}^{d} P(x_i \mid c)$$
+
+추정할 것이 $2^d$ 개에서 $d \times (\text{level 수})$ 개로 줄어듭니다.
+
+### 2) MAP 결정
+
+$$\tilde{y} = h_{NB}(\mathbf{x}) = \arg\max_{c}\; P(c)\prod_{i=1}^{d} P(x_i \mid c)$$
+
+⚠️ 실제 구현은 **반드시 로그로** — $d$ 가 조금만 커져도 곱이 언더플로합니다.
+
+$$\log P(c) + \sum_{i=1}^{d}\log P(x_i \mid c)$$
+
+### 3) 🧪 실습: 20줄로 naive Bayes 만들기
+
+```{r}
+#| eval: true
+nb_fit <- function(X, y, lambda = 1) {          # lambda = Laplace smoothing
+  cls <- levels(y); nc <- length(cls)
+  prior <- (as.numeric(table(y)) + lambda) / (length(y) + lambda * nc)
+  names(prior) <- cls
+  cond <- lapply(X, function(col) {             # feature마다 (level x class) 표
+    tb <- table(col, y)
+    sweep(tb + lambda, 2, colSums(tb) + lambda * nrow(tb), "/")
+  })
+  list(prior = prior, cond = cond, cls = cls, vars = names(X))
+}
+nb_logpost <- function(m, X) {                  # 로그로 더한다
+  lp <- matrix(log(m$prior), nrow(X), length(m$cls), byrow = TRUE,
+               dimnames = list(NULL, m$cls))
+  for (v in m$vars) lp <- lp + log(m$cond[[v]][as.character(X[[v]]), , drop = FALSE])
+  lp
+}
+nb_predict <- function(m, X) factor(m$cls[max.col(nb_logpost(m, X))], levels = m$cls)
+nb_prob <- function(m, X) {
+  lp <- nb_logpost(m, X); e <- exp(lp - apply(lp, 1, max)); e / rowSums(e)
+}
+```
+
+```{r}
+#| eval: true
+# 치료 반응(R / NR)을 예측하는 범주형 임상 데이터 (조건부 독립이 성립하도록 생성)
+make_clin <- function(n, seed) {
+  set.seed(seed)
+  y <- sample(c("NR", "R"), n, TRUE, prob = c(.6, .4))
+  pick <- function(lv, pR, pNR) {
+    p <- ifelse(y == "R", 1, 2); m <- rbind(pR, pNR)
+    vapply(seq_len(n), function(i) sample(lv, 1, prob = m[p[i], ]), character(1))
+  }
+  data.frame(
+    stage     = factor(pick(c("I","II","III"),       c(.50,.33,.17), c(.20,.35,.45)), levels = c("I","II","III")),
+    ecog      = factor(pick(c("0","1","2"),          c(.60,.30,.10), c(.30,.40,.30)), levels = c("0","1","2")),
+    biomarker = factor(pick(c("low","mid","high"),   c(.15,.35,.50), c(.50,.35,.15)), levels = c("low","mid","high")),
+    smoking   = factor(pick(c("never","ex","current"), c(.45,.35,.20), c(.30,.35,.35)), levels = c("never","ex","current")),
+    sex       = factor(pick(c("F","M"),              c(.5,.5), c(.5,.5)), levels = c("F","M")),
+    y = factor(y, levels = c("NR","R")))
+}
+vr <- c("stage","ecog","biomarker","smoking","sex")
+trc <- make_clin(400, 101); tec <- make_clin(4000, 202)
+
+m <- nb_fit(trc[vr], trc$y, lambda = 1)
+round(m$cond$biomarker, 4)       # P(biomarker | class)
+```
+
+```{r}
+#| eval: true
+#| message: false
+library(rpart)
+gl <- glm(y ~ ., data = trc[c(vr,"y")], family = binomial)
+rt <- rpart(y ~ ., data = trc[c(vr,"y")], method = "class")
+data.frame(
+  model = c("naive Bayes (from scratch)", "logistic regression", "decision tree"),
+  test_accuracy = round(c(
+    mean(nb_predict(m, tec[vr]) == tec$y),
+    mean(factor(ifelse(predict(gl, tec, type="response") > .5, "R","NR"),
+                levels = c("NR","R")) == tec$y),
+    mean(predict(rt, tec, type = "class") == tec$y)), 4))
+```
+
+-   naive Bayes **0.7672**, 로지스틱 **0.7675** — 사실상 동점입니다
+-   ✅ 데이터가 정말 조건부 독립이면, naive Bayes는 **훨씬 적은 모수로 discriminative 모델을 따라잡습니다**
+-   트리(0.7398)가 뒤처지는 것은 범주형 5개의 곱 구조를 축 분할로 흉내 내야 해서입니다
+
+### 4) 🧪 실습: 한 환자를 손으로 따라가 보기
+
+```{r}
+#| eval: true
+pat <- tec[1, vr, drop = FALSE]; print(pat)
+tb <- data.frame(
+  term = c("log prior", paste0("log P(", vr, " | c)")),
+  NR = round(c(log(m$prior[["NR"]]),
+               sapply(vr, function(v) log(m$cond[[v]][as.character(pat[[v]]), "NR"]))), 4),
+  R  = round(c(log(m$prior[["R"]]),
+               sapply(vr, function(v) log(m$cond[[v]][as.character(pat[[v]]), "R"]))), 4))
+tb <- rbind(tb, data.frame(term = "SUM (log posterior, unnormalized)",
+                           NR = round(sum(tb$NR), 4), R = round(sum(tb$R), 4)))
+rownames(tb) <- NULL
+tb
+```
+
+```{r}
+#| eval: true
+round(nb_prob(m, pat)[1, ], 4)          # 사후확률
+as.character(tec$y[1])                 # 실제 label
+```
+
+-   합계 **-4.9912 (NR) vs -6.7689 (R)** → 사후확률 **0.8554 / 0.1446**, 실제 label은 NR
+-   기여를 뜯어보면 **biomarker = low가 -0.7058 vs -1.8991로 가장 크게 NR 쪽으로 밀었습니다**
+-   ✅ naive Bayes는 **feature별 기여를 그대로 읽을 수 있습니다.** 이 투명성이 임상에서 선호되는 이유입니다
+-   ⚠️ 단, 이 "기여"는 **독립 가정 위에서만** 정직합니다. 5절에서 이 가정이 깨지면 어떻게 되는지 봅니다
+
+### 5) Laplace smoothing
+
+학습 데이터에 **한 번도 안 나온 조합**이 있으면 $P(x_i\mid c) = 0$ 이 되고, **곱 전체가 0**이 됩니다. 다른 feature가 아무리 그 class를 가리켜도 소용없습니다.
+
+$$\hat{P}(x_i \mid c) = \frac{|D_{c,x_i}| + \lambda}{|D_c| + \lambda\,N_i}$$
+
+$N_i$ 는 feature $i$ 가 가질 수 있는 값의 개수. **각 칸에 $\lambda$ 개씩 가상의 샘플을 미리 넣어두는 것**입니다.
+
+```{r}
+#| eval: true
+# 원자료 예제 : 동전을 3번 던져 H, H, T 가 나왔다
+cnt <- c(H = 2, T = 1)
+do.call(rbind, lapply(c(0, 1, 100), function(k)
+  data.frame(lambda = k,
+             P_H = round((cnt[["H"]]+k)/(sum(cnt)+2*k), 4),
+             P_T = round((cnt[["T"]]+k)/(sum(cnt)+2*k), 4),
+             as_fraction = c("2/3, 1/3", "3/5, 2/5", "102/203, 101/203")[
+               match(k, c(0,1,100))])))
+```
+
+-   $\lambda$ 가 커질수록 **균등분포(0.5, 0.5)로 끌려갑니다** — 데이터를 덜 믿는다는 뜻
+-   ✅ $\lambda$ 는 사실 **Dirichlet prior의 모수**입니다. 3절과 같은 이야기 — smoothing = 사전분포 = 정규화
+
+### 6) 🧪 실습: 0 하나가 전체를 0으로 만든다
+
+```{r}
+#| eval: true
+# stage III 이면서 반응한 환자가 학습셋에 한 명도 없는 상황을 일부러 만든다
+tr2 <- trc[!(trc$stage == "III" & trc$y == "R"), ]
+table(tr2$stage, tr2$y)
+```
+
+```{r}
+#| eval: true
+case <- data.frame(
+  stage = factor("III", levels = levels(trc$stage)),
+  ecog  = factor("0",   levels = levels(trc$ecog)),
+  biomarker = factor("high", levels = levels(trc$biomarker)),   # 강하게 R을 가리킴
+  smoking = factor("never", levels = levels(trc$smoking)),
+  sex = factor("F", levels = levels(trc$sex)))
+
+do.call(rbind, lapply(c(0, 1, 5), function(k) {
+  mm <- nb_fit(tr2[vr], tr2$y, lambda = k)
+  data.frame(lambda = k,
+             P_stageIII_given_R  = round(mm$cond$stage["III","R"], 5),
+             posterior_R_of_case = round(nb_prob(mm, case)[1, "R"], 5),
+             test_accuracy = round(mean(nb_predict(mm, tec[vr]) == tec$y), 4))
+}))
+```
+
+-   $\lambda = 0$ → 사후확률이 **정확히 0**. biomarker = high도, ECOG 0도 전부 무시됩니다
+-   $\lambda = 1$ → 0.05699, $\lambda = 5$ → 0.20023으로 살아납니다
+-   ⚠️ **단 하나의 빈 칸이 그 값을 가진 모든 샘플의 판정을 결정합니다.** 희귀 범주가 있으면 반드시 smoothing
+
+### 7) 🧪 실습: $\lambda$ 는 언제 일하나
+
+```{r}
+#| eval: true
+#| message: false
+# SNP 유사 데이터 : 유전형 0/1/2, 희귀 동형접합 때문에 빈 칸이 생긴다
+make_snp <- function(n, p, seed, k, beta) {
+  set.seed(seed)
+  G <- sapply(runif(p, .15, .5), function(f) rbinom(n, 2, f))
+  b <- rep(0, p); b[1:k] <- rep(c(beta, -beta), length.out = k)
+  eta <- as.vector(scale(G, scale = FALSE) %*% b)
+  list(G = G, y = factor(ifelse(runif(n) < 1/(1+exp(-eta)), "case", "ctrl"),
+                         levels = c("ctrl","case")))
+}
+as_fac <- function(G, p) {
+  d <- as.data.frame(lapply(as.data.frame(G), factor, levels = 0:2))
+  names(d) <- paste0("g", seq_len(p)); d
+}
+snp_tr <- make_snp(300, 1000, 1500, 500, 0.16)
+snp_te <- make_snp(4000, 1000, 1900, 500, 0.16)
+Xtr <- as_fac(snp_tr$G, 1000); Xte <- as_fac(snp_te$G, 1000)
+
+zero_cells <- function(X, y) sum(sapply(X, function(z) sum(table(z, y) == 0)))
+c(clinical_n400_empty_cells = zero_cells(trc[vr], trc$y),
+  SNP_p1000_empty_cells     = zero_cells(Xtr, snp_tr$y),
+  SNP_total_cells           = 1000 * 3 * 2)
+```
+
+```{r}
+#| eval: true
+lg <- c(0, 0.5, 1, 2, 5, 20)
+data.frame(lambda = lg,
+  clinical_n400 = round(sapply(lg, function(k)
+    mean(nb_predict(nb_fit(trc[vr], trc$y, k), tec[vr]) == tec$y)), 4),
+  SNP_p1000 = round(sapply(lg, function(k)
+    mean(nb_predict(nb_fit(Xtr, snp_tr$y, k), Xte) == snp_te$y)), 4))
+```
+
+-   임상 데이터는 빈 칸이 **0개** → $\lambda$ 를 바꿔도 **정확도가 전혀 안 변합니다**
+-   SNP 데이터는 6000칸 중 빈 칸이 **겨우 5개**인데, $\lambda = 0$ 이면 0.5305, $\lambda = 20$ 이면 **0.5692**
+-   ✅ **빈 칸 5개가 정확도 4%p를 좌우합니다.** $\lambda$ 는 평소엔 아무 일도 안 하다가, 필요할 때 전부를 구합니다
+-   ⚠️ 그러니 $\lambda$ 를 기본값 1로 두고 넘어가지 말고, **빈 칸이 몇 개인지 먼저 세어 보세요**
+
+### 8) 연속형 feature — Gaussian naive Bayes
+
+연속형이면 $P(x_i\mid c)$ 를 정규분포로 가정합니다. naive 가정은 곧 **class별 공분산이 대각(diagonal)**이라는 뜻입니다.
+
+| 모델 | 공분산 가정 | 결정경계 |
+|---|---|---|
+| **Gaussian NB** | class별, **대각** | 축에 정렬된 이차곡선 |
+| **LDA** (W6) | 전체 공유, full | **직선** |
+| **QDA** | class별, full | 일반 이차곡선 |
+
+```{r}
+#| eval: true
+#| message: false
+library(MASS)
+set.seed(44)
+S1 <- matrix(c(1, .85, .85, 1), 2); S2 <- matrix(c(1, -.6, -.6, 1.8), 2)
+mk <- function(n, mu, S) { L <- chol(S); t(t(matrix(rnorm(2*n), n, 2) %*% L) + mu) }
+A <- mk(200, c(-0.8,-0.8), S1); B <- mk(200, c(1.0, 0.9), S2)
+dat <- data.frame(x1 = c(A[,1],B[,1]), x2 = c(A[,2],B[,2]),
+                  y = factor(rep(c("A","B"), each = 200)))
+set.seed(45)
+A2 <- mk(2000, c(-0.8,-0.8), S1); B2 <- mk(2000, c(1.0,0.9), S2)
+dte <- data.frame(x1 = c(A2[,1],B2[,1]), x2 = c(A2[,2],B2[,2]),
+                  y = factor(rep(c("A","B"), each = 2000)))
+
+gnb_fit <- function(X, y) list(cls = levels(y),
+  prior = as.numeric(table(y))/length(y),
+  mu = lapply(levels(y), function(k) colMeans(X[y == k, ])),
+  sd = lapply(levels(y), function(k) apply(X[y == k, ], 2, sd)))
+gnb_score <- function(m, X) sapply(seq_along(m$cls), function(k)
+  log(m$prior[k]) + rowSums(dnorm(as.matrix(X), rep(m$mu[[k]], each = nrow(X)),
+                                  rep(m$sd[[k]], each = nrow(X)), log = TRUE)))
+gnb_pred <- function(m, X) factor(m$cls[max.col(gnb_score(m, X))], levels = m$cls)
+
+gm <- gnb_fit(dat[c("x1","x2")], dat$y)
+ld <- lda(y ~ x1 + x2, dat); qd <- qda(y ~ x1 + x2, dat)
+data.frame(
+  model = c("Gaussian NB", "LDA", "QDA"),
+  covariance = c("diagonal, per class", "full, shared", "full, per class"),
+  n_cov_params = c(4, 3, 6),
+  test_accuracy = round(c(mean(gnb_pred(gm, dte[c("x1","x2")]) == dte$y),
+                          mean(predict(ld, dte)$class == dte$y),
+                          mean(predict(qd, dte)$class == dte$y)), 4))
+c(within_class_cor_A = round(cor(A[,1], A[,2]), 3),      # naive 가정이 맞는지 확인
+  within_class_cor_B = round(cor(B[,1], B[,2]), 3))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.2
+#| message: false
+gr <- expand.grid(x1 = seq(-4, 4.5, length.out = 160),
+                  x2 = seq(-4.5, 5, length.out = 160))
+zz <- rbind(
+  data.frame(gr, z = as.integer(gnb_pred(gm, gr)),        model = "Gaussian NB"),
+  data.frame(gr, z = as.integer(predict(ld, gr)$class),   model = "LDA"),
+  data.frame(gr, z = as.integer(predict(qd, gr)$class),   model = "QDA"))
+zz$model <- factor(zz$model, levels = c("Gaussian NB", "LDA", "QDA"))
+
+ggplot(zz, aes(x1, x2)) +
+  geom_raster(aes(fill = factor(z)), alpha = .28) +
+  geom_contour(aes(z = z), breaks = 1.5, colour = "black", linewidth = .6) +
+  geom_point(data = dat, aes(colour = y), size = .75) +
+  facet_wrap(~ model) +
+  scale_fill_manual(values = c("1" = "#2e8b7a", "2" = "#d1495b"), guide = "none") +
+  scale_colour_manual(values = c(A = "#2e8b7a", B = "#d1495b")) +
+  labs(colour = NULL) + theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   학습셋의 class 내 상관은 A에서 **0.858**, B에서 **-0.45** — naive 가정이 명백히 틀렸습니다
+-   그런데도 Gaussian NB(0.8790)가 **LDA(0.8732)보다 낫습니다**. class별 분산을 따로 갖는 이득이 상관을 무시한 손해보다 컸습니다
+-   QDA(0.9080)가 최고 — 상관까지 쓰니까요
+-   ✅ **틀린 가정이 항상 손해는 아닙니다.** 모수를 줄여 분산을 낮추는 이득과 저울질해야 합니다 (W3의 bias-variance)
+
+### 9) 🧪 실습: $p \gg n$ 에서 naive Bayes는 언제 이기나
+
+```{r}
+#| eval: true
+#| message: false
+library(glmnet)
+run <- function(p, k, beta, ntr = 300) {
+  a <- make_snp(ntr, p, 500 + p, k, beta); b <- make_snp(4000, p, 900 + p, k, beta)
+  nb <- mean(nb_predict(nb_fit(as_fac(a$G, p), a$y, 1), as_fac(b$G, p)) == b$y)
+  cv <- cv.glmnet(a$G, a$y, family = "binomial", alpha = 1, nfolds = 5)
+  ls <- mean(factor(as.vector(predict(cv, b$G, s = "lambda.min", type = "class")),
+                    levels = levels(b$y)) == b$y)
+  c(nb, ls, sum(coef(cv, s = "lambda.min")[-1] != 0))
+}
+pg <- c(50, 100, 300, 1000)
+set.seed(1)
+sparse <- do.call(rbind, lapply(pg, function(p) { r <- run(p, 10, 0.8)
+  data.frame(p = p, naive_Bayes = round(r[1],4), lasso = round(r[2],4),
+             lasso_nonzero = r[3], truth = "sparse (10 causal)") }))
+poly   <- do.call(rbind, lapply(pg, function(p) { r <- run(p, p/2, 0.16)
+  data.frame(p = p, naive_Bayes = round(r[1],4), lasso = round(r[2],4),
+             lasso_nonzero = r[3], truth = "polygenic (p/2 causal)") }))
+rbind(sparse, poly)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.2
+#| fig-height: 3.4
+#| message: false
+pl <- rbind(sparse, poly)
+long <- rbind(
+  data.frame(p = pl$p, acc = pl$naive_Bayes, model = "naive Bayes", truth = pl$truth),
+  data.frame(p = pl$p, acc = pl$lasso,       model = "lasso",       truth = pl$truth))
+long$truth <- factor(long$truth, levels = c("sparse (10 causal)", "polygenic (p/2 causal)"))
+
+ggplot(long, aes(p, acc, colour = model)) +
+  geom_hline(yintercept = .5, linetype = 3, colour = "grey55") +
+  geom_line(linewidth = .9) + geom_point(size = 1.8) +
+  facet_wrap(~ truth) + scale_x_log10(breaks = pg) +
+  scale_colour_manual(values = c("naive Bayes" = "#2e8b7a", "lasso" = "#d1495b")) +
+  labs(x = "number of SNPs (log scale)", y = "test accuracy", colour = NULL,
+       caption = "n_train = 300; dotted = chance") +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+```{r}
+#| eval: true
+# 정규화 없는 로지스틱은 어디서 무너지나 (polygenic)
+do.call(rbind, lapply(c(50, 100, 300), function(p) {
+  a <- make_snp(300, p, 500+p, p/2, 0.16); b <- make_snp(4000, p, 900+p, p/2, 0.16)
+  d  <- as.data.frame(a$G); names(d) <- paste0("g", seq_len(p)); d$y <- a$y
+  dt <- as.data.frame(b$G); names(dt) <- paste0("g", seq_len(p))
+  g  <- suppressWarnings(glm(y ~ ., data = d, family = binomial))
+  pr <- suppressWarnings(predict(g, dt, type = "response"))
+  data.frame(p = p, coef_not_estimable = sum(is.na(coef(g))),
+             train_accuracy = round(mean((fitted(g) > .5) == (a$y == "case")), 4),
+             test_accuracy  = round(mean((pr > .5) == (b$y == "case")), 4))
+}))
+```
+
+-   **진실이 희소하면(왼쪽) lasso가 이깁니다** — $p = 50$ 에서 0.6898 vs 0.6392. 변수 선택이 정확히 할 일을 합니다
+-   **진실이 다유전자형이면(오른쪽) 이야기가 뒤집힙니다.** naive Bayes는 $p$ 가 커질수록 0.5275 → 0.5598로 **올라가고**, lasso는 0.4915~0.5522 사이를 **널뜁니다**(선택한 SNP 수가 0개~45개로 요동)
+-   정규화 없는 로지스틱은 $p = 300$ 에서 **train 1.0000 / test 0.5118** — 완벽한 암기, 완전한 무용
+-   ✅ **약한 신호가 수백 개 흩어져 있으면 전부 조금씩 더하는 쪽이 유리합니다.** naive Bayes는 계수를 "추정"하지 않고 세기만 하므로 절대 발산하지 않습니다
+-   ⚠️ 다만 절대값은 모두 0.5~0.6대입니다. **$n = 300$ 으로 다유전자형 형질을 예측하는 건 원래 어려운 일**이라는 것도 같이 읽어야 합니다
+
+------------------------------------------------------------------------
+
+## 5. Semi-naïve Bayes 🔗
+
+### 1) 독립 가정을 조금만 푼다
+
+naive는 "전부 독립", Bayesian network는 "아무 의존이나 허용". 그 중간이 semi-naive입니다.
+
+**One-Dependent Estimator (ODE)** — 각 feature는 class 말고 **최대 하나의 다른 feature**에 의존할 수 있다.
+
+$$P(c\mid\mathbf{x}) \propto P(c)\prod_{i=1}^{d} P(x_i \mid c, pa_i)$$
+
+| 방법 | parent 정하는 법 |
+|---|---|
+| **NB** | parent 없음 |
+| **SPODE** | **모두 같은 하나**(super-parent). 교차검증으로 고름 |
+| **TAN** | 조건부 상호정보량으로 최대 신장 트리를 만들어 결정 |
+| **AODE** | 각 feature를 super-parent로 한 SPODE를 **전부 만들어 평균** |
+| **KDB, NBtree** | parent $k$ 개 — 필요한 샘플이 기하급수적으로 늘어남 |
+
+### 2) AODE
+
+$$P(c\mid\mathbf{x}) \;\propto\; \sum_{\substack{i=1 \\ |D_{x_i}| \ge m'}}^{d} P(c, x_i)\prod_{j=1}^{d} P(x_j \mid c, x_i)$$
+
+Laplace 보정을 넣은 추정식은
+
+$$\hat{P}(c, x_i) = \frac{|D_{c,x_i}|+1}{|D| + N\times N_i}, \qquad
+\hat{P}(x_j \mid c, x_i) = \frac{|D_{c,x_i,x_j}|+1}{|D_{c,x_i}| + N_j}$$
+
+✅ **모델 선택이 없습니다.** 학습은 표를 세는 것이 전부이고(lazy learning), 새 샘플이 들어오면 표만 갱신하면 됩니다.
+
+### 3) 🧪 실습: SPODE·AODE 직접 구현
+
+```{r}
+#| eval: true
+spode_tables <- function(X, y, i) {
+  N <- nlevels(y); Ni <- nlevels(X[[i]]); D <- nrow(X)
+  cxi <- table(y, X[[i]])                                   # |D_{c,xi}|
+  cond <- lapply(seq_along(X), function(j) {
+    Nj <- nlevels(X[[j]])
+    cnt <- table(y, X[[i]], X[[j]])                         # |D_{c,xi,xj}|
+    (cnt + 1) / array(rep(as.vector(cxi) + Nj, Nj), dim = dim(cnt))
+  })
+  list(p_cxi = (cxi + 1) / (D + N * Ni), cond = cond, i = i, cls = levels(y))
+}
+spode_logscore <- function(tb, X) {
+  xi <- as.character(X[[tb$i]])
+  out <- matrix(0, nrow(X), length(tb$cls), dimnames = list(NULL, tb$cls))
+  for (k in seq_along(tb$cls)) {
+    s <- log(tb$p_cxi[tb$cls[k], xi])
+    for (j in seq_along(tb$cond))
+      s <- s + log(tb$cond[[j]][cbind(tb$cls[k], xi, as.character(X[[j]]))])
+    out[, k] <- s
+  }
+  out
+}
+logsumexp <- function(M) { mx <- apply(M, 1, max); mx + log(rowSums(exp(M - mx))) }
+
+aode_fit <- function(X, y, mprime = 30) {     # m' 미달 feature는 super-parent에서 제외
+  keep <- which(vapply(X, function(col) min(table(col)) >= mprime, logical(1)))
+  list(tabs = lapply(keep, function(i) spode_tables(X, y, i)), cls = levels(y))
+}
+aode_logpost <- function(m, X) {
+  S <- lapply(m$tabs, function(tb) spode_logscore(tb, X))
+  out <- matrix(0, nrow(X), length(m$cls), dimnames = list(NULL, m$cls))
+  for (k in seq_along(m$cls)) out[, k] <- logsumexp(sapply(S, function(s) s[, k]))
+  out
+}
+aode_predict  <- function(m, X)  factor(m$cls[max.col(aode_logpost(m, X))], levels = m$cls)
+spode_predict <- function(tb, X) factor(tb$cls[max.col(spode_logscore(tb, X))], levels = tb$cls)
+```
+
+### 4) 🧪 실습: 중복 feature가 naive Bayes를 무너뜨린다
+
+오믹스에서는 **거의 같은 정보를 담은 feature**가 흔합니다 — 연쇄 불평형에 있는 SNP들, 같은 경로의 유전자들, 같은 항목을 다르게 물은 설문 문항들.
+
+```{r}
+#| eval: true
+make_dep <- function(n, rho, seed) {
+  set.seed(seed)
+  y <- sample(c("NR","R"), n, TRUE, prob = c(.5,.5))
+  pk <- function(pR, lv) vapply(seq_len(n), function(i)
+    sample(lv, 1, prob = if (y[i] == "R") c(pR, 1-pR) else c(1-pR, pR)), character(1))
+  x1 <- pk(.65, c("a","b"))                          # 약한 정보
+  x2 <- ifelse(runif(n) < rho, x1, pk(.55, c("a","b")))   # 확률 rho 로 x1 복제
+  x3 <- ifelse(runif(n) < rho, x1, pk(.55, c("a","b")))
+  x4 <- pk(.82, c("a","b"))                          # 더 강한 정보, 복제본 없음
+  x5 <- pk(.50, c("a","b"))                          # 잡음
+  data.frame(x1 = factor(x1), x2 = factor(x2), x3 = factor(x3),
+             x4 = factor(x4), x5 = factor(x5), y = factor(y, levels = c("NR","R")))
+}
+vr5 <- paste0("x", 1:5)
+dep <- do.call(rbind, lapply(c(0, 0.2, 0.4, 0.6, 0.8, 0.95), function(r) {
+  a <- make_dep(600, r, 700 + round(r*100)); b <- make_dep(4000, r, 800 + round(r*100))
+  data.frame(rho = r,
+    cor_x1x2 = round(cor(as.integer(a$x1), as.integer(a$x2)), 3),
+    naive_Bayes = round(mean(nb_predict(nb_fit(a[vr5], a$y, 1), b[vr5]) == b$y), 4),
+    SPODE_x1    = round(mean(spode_predict(spode_tables(a[vr5], a$y, 1), b[vr5]) == b$y), 4),
+    AODE        = round(mean(aode_predict(aode_fit(a[vr5], a$y, 30), b[vr5]) == b$y), 4))
+}))
+dep
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.4
+#| fig-height: 3.8
+#| message: false
+# AODE와 SPODE가 거의 겹치므로 SPODE를 점선으로 위에 그린다
+lo <- rbind(
+  data.frame(rho = dep$rho, acc = dep$naive_Bayes, model = "naive Bayes"),
+  data.frame(rho = dep$rho, acc = dep$AODE,        model = "AODE"),
+  data.frame(rho = dep$rho, acc = dep$SPODE_x1,    model = "SPODE (parent = x1)"))
+lo$model <- factor(lo$model, levels = c("naive Bayes", "AODE", "SPODE (parent = x1)"))
+
+ggplot(lo, aes(rho, acc, colour = model, linetype = model, linewidth = model)) +
+  geom_line() + geom_point(size = 1.6) +
+  scale_colour_manual(values = c("naive Bayes" = "#d1495b", "AODE" = "#2e8b7a",
+                                 "SPODE (parent = x1)" = "#7d8597")) +
+  scale_linetype_manual(values = c("naive Bayes" = 1, "AODE" = 1,
+                                   "SPODE (parent = x1)" = 2)) +
+  scale_linewidth_manual(values = c("naive Bayes" = 1.0, "AODE" = 1.6,
+                                    "SPODE (parent = x1)" = .7)) +
+  labs(x = "rho  (probability that x2, x3 copy x1)", y = "test accuracy",
+       colour = NULL, linetype = NULL, linewidth = NULL) +
+  theme_minimal() + theme(legend.position = "bottom")
+```
+
+-   $\rho = 0$ 에서는 셋 다 **0.8268로 동일**합니다. 독립이 맞으면 semi-naive는 얻을 것이 없습니다
+-   $\rho = 0.95$ 가 되면 naive Bayes만 **0.6648로 추락**하고, SPODE 0.8098 · AODE 0.8155는 버팁니다
+-   **왜 그런가** — x1의 로그 odds 기여가 $3\times\log\frac{0.65}{0.35} = 1.86$ 으로 세 번 세어져, 한 번만 세어지는 더 강한 x4의 $\log\frac{0.82}{0.18} = 1.52$ 를 **눌러 버립니다**
+-   ✅ **중복은 정보를 더하지 않는데 naive Bayes는 더한 것처럼 셉니다.** 이것이 독립 가정이 깨질 때의 실제 피해입니다
+
+### 5) 🧪 실습: 정확도보다 먼저 무너지는 것 — 확률
+
+```{r}
+#| eval: true
+a <- make_dep(600, .95, 795); b <- make_dep(4000, .95, 895)
+mnb <- nb_fit(a[vr5], a$y, 1); mao <- aode_fit(a[vr5], a$y, 30)
+pnb <- nb_prob(mnb, b[vr5])[, "R"]
+lp  <- aode_logpost(mao, b[vr5]); e <- exp(lp - apply(lp, 1, max))
+pao <- (e / rowSums(e))[, "R"]
+
+data.frame(
+  model = c("naive Bayes", "AODE"),
+  mean_max_posterior = round(c(mean(pmax(pnb, 1-pnb)), mean(pmax(pao, 1-pao))), 4),
+  accuracy = round(c(mean(nb_predict(mnb, b[vr5]) == b$y),
+                     mean(aode_predict(mao, b[vr5]) == b$y)), 4),
+  Brier = round(c(mean((pnb - (b$y == "R"))^2), mean((pao - (b$y == "R"))^2)), 4))
+```
+
+```{r}
+#| eval: true
+# 독립이 진짜로 성립하는 임상 데이터에서는 AODE가 손해를 보지 않는다
+data.frame(model = c("naive Bayes", "AODE"),
+  test_accuracy = round(c(
+    mean(nb_predict(nb_fit(trc[vr], trc$y, 1), tec[vr]) == tec$y),
+    mean(aode_predict(aode_fit(trc[vr], trc$y, 30), tec[vr]) == tec$y)), 4))
+```
+
+-   naive Bayes의 평균 최대 사후확률이 **0.8213** — 정확도가 0.6648인데 **0.82만큼 확신**합니다
+-   Brier score도 **0.1804 vs 0.1437**로 명확히 나쁩니다
+-   ✅ **naive Bayes는 "그럭저럭 분류하지만 확률은 믿을 수 없는" 모델의 전형입니다.** argmax는 중복에 어느 정도 버티지만 확률값은 바로 무너집니다
+-   ⚠️ **NB의 사후확률을 임상 위험도로 보고하지 마세요.** 꼭 써야 한다면 W4의 **보정(calibration)**을 반드시 거칠 것
+-   독립이 성립하는 임상 데이터에서는 NB 0.7672 vs AODE 0.7678 — **AODE는 손해도 거의 없습니다.** 의심되면 둘 다 돌려 보면 됩니다
+
+------------------------------------------------------------------------
+
+## 6. Bayesian network 🕸️
+
+### 1) 구조와 조건부확률표
+
+Bayesian network $B = \langle G, \Theta\rangle$ 는
+
+-   **$G$** — 각 feature를 node로 하는 **DAG**(방향성 비순환 그래프). edge는 직접적인 의존 관계
+-   **$\Theta$** — node마다의 **조건부확률표(CPT)**. $\theta_{x_i \mid \pi_i} = P_B(x_i \mid \pi_i)$
+
+그리고 결합분포가 **부모에 대한 조건부확률의 곱으로 분해**됩니다.
+
+$$P(x_1,\ldots,x_n) = \prod_{i=1}^{n} P\!\left(x_i \mid \text{parent}(x_i)\right)$$
+
+⚠️ 이것이 전부입니다. feature가 $n$ 개, 값이 $q$ 가지면 결합분포는 원래 $q^n - 1$ 개의 모수를 갖지만, **직접 상호작용하는 node만 edge로 잇고 나머지는 Markov 조건으로 버립니다.**
+
+### 2) 🧪 실습: 젖은 잔디 — 원자료 예제 재현
+
+비가 오거나 스프링클러를 틀면 잔디가 젖습니다. 비가 오면 스프링클러를 틀 필요가 없습니다.
+
+$$\text{rain} \to \text{sprinkler} \to \text{grass}, \qquad \text{rain} \to \text{grass}$$
+
+```{r}
+#| eval: true
+p_rain <- c(not_rain = .8, rain = .2)
+p_spr  <- rbind(not_rain = c(off = .60, on = .40),
+                rain     = c(off = .99, on = .01))
+p_wet  <- array(0, c(2,2,2), dimnames = list(
+  spr = c("off","on"), rain = c("not_rain","rain"), wet = c("dry","wet")))
+p_wet["off","not_rain","wet"] <- 0.00;  p_wet["off","rain","wet"] <- 0.80
+p_wet["on", "not_rain","wet"] <- 0.90;  p_wet["on", "rain","wet"] <- 0.99
+p_wet[,,"dry"] <- 1 - p_wet[,,"wet"]
+
+joint <- expand.grid(rain = c("not_rain","rain"), spr = c("off","on"),
+                     wet = c("dry","wet"), stringsAsFactors = FALSE)
+joint$p <- mapply(function(r, s, w) p_rain[[r]] * p_spr[r, s] * p_wet[s, r, w],
+                  joint$rain, joint$spr, joint$wet)
+c(sum_of_joint = sum(joint$p))
+transform(joint[joint$wet == "wet", ], p = round(p, 5))
+```
+
+```{r}
+#| eval: true
+q <- function(cond) sum(joint$p[cond])
+wet <- joint$wet == "wet"; rain <- joint$rain == "rain"
+c(P_rain                 = round(p_rain[["rain"]], 5),
+  P_wet                  = round(q(wet), 5),
+  P_rain_given_wet       = round(q(wet & rain) / q(wet), 5),
+  P_rain_given_wet_spron = round(q(wet & rain & joint$spr=="on") / q(wet & joint$spr=="on"), 5),
+  P_rain_given_wet_sproff= round(q(wet & rain & joint$spr=="off")/ q(wet & joint$spr=="off"), 5))
+```
+
+-   비 올 확률은 원래 **0.2**. 잔디가 젖은 걸 보면 **0.35769**로 오릅니다 (원자료의 35.77%와 일치)
+-   그런데 **스프링클러가 켜져 있던 것까지 알면 0.00683으로 추락**합니다
+-   ✅ 이것이 **explaining away(설명해 버리기)**입니다. 젖은 이유를 스프링클러가 이미 설명했으므로 비가 설 자리가 없습니다
+-   반대로 스프링클러가 꺼져 있었다면 **$P(\text{rain}\mid\text{wet, off}) = 1$** — CPT에 $P(\text{wet}\mid\text{off, not rain}) = 0$ 이 박혀 있으니 논리적 귀결입니다
+
+### 3) d-분리 — 그림에서 독립을 읽는 법
+
+두 node를 잇는 chain이 node 집합 $W$ 에 의해 **폐쇄**되는지를 봅니다.
+
+| 연결 | 모양 | $b$ 를 알면 |
+|---|---|---|
+| **선형** (머리-꼬리) | $a \to b \to c$ | **폐쇄** — $a \perp c \mid b$ |
+| **분기** (꼬리-꼬리) | $a \leftarrow b \to c$ | **폐쇄** — $a \perp c \mid b$ |
+| **합류** (머리-머리) | $a \to b \leftarrow c$ | **개방** — 원래 독립이던 $a, c$ 가 **의존하게 됨** |
+
+$a$ 와 $c$ 사이의 **모든** chain이 $W$ 로 폐쇄되면 $d\text{-}sep(a, c \mid W)$ 입니다.
+
+::: {.callout-warning}
+## ⚠️ 합류(collider)는 조건으로 두면 안 됩니다
+
+선형·분기는 직관과 맞습니다 — 중간을 알면 끊어집니다. **합류는 반대입니다.** $b$ 를 알면 오히려 $a$ 와 $c$ 가 얽힙니다("$a$ 가 $b$ 를 설명하면 $c$ 의 몫이 줄어든다").
+
+역학에서 이것이 **collider bias / Berkson's paradox**입니다. 결과(또는 결과의 자손)를 보정 변수로 넣거나, 결과에 따라 표본을 고르면 **없던 연관이 생깁니다.** "혹시 몰라서 다 넣었다"는 회귀 모델이 위험한 이유가 여기 있습니다.
+:::
+
+### 4) 🧪 실습: 없던 상관이 생긴다
+
+```{r}
+#| eval: true
+#| fig-width: 7.2
+#| fig-height: 3.4
+#| message: false
+set.seed(66)
+nn <- 3000
+av <- rnorm(nn); cv <- rnorm(nn)          # 서로 완전히 독립
+bv <- av + cv + rnorm(nn, 0, .4)          # 합류 node
+keep <- abs(bv - median(bv)) < 0.35       # b 를 좁은 구간으로 고정 = 조건으로 둠
+
+cd <- rbind(data.frame(a = av, c = cv, panel = "marginal  (b free)"),
+            data.frame(a = av[keep], c = cv[keep], panel = "conditioned  (b fixed)"))
+cd$panel <- factor(cd$panel, levels = c("marginal  (b free)", "conditioned  (b fixed)"))
+
+ggplot(cd, aes(a, c)) +
+  geom_point(size = .6, alpha = .35, colour = "#7d8597") +
+  geom_smooth(method = "lm", se = FALSE, colour = "#d1495b", linewidth = .9) +
+  facet_wrap(~ panel) + labs(x = "a", y = "c") + theme_minimal()
+```
+
+```{r}
+#| eval: true
+c(cor_marginal        = round(cor(av, cv), 4),
+  cor_given_b_band    = round(cor(av[keep], cv[keep]), 4),
+  partial_cor_given_b = round(cor(residuals(lm(av ~ bv)), residuals(lm(cv ~ bv))), 4))
+c(n_in_band = sum(keep), n_total = nn)
+```
+
+-   원래 상관은 **-0.028** (독립). $b$ 를 고정하면 **-0.8411**
+-   회귀로 보정해도(편상관 **-0.8609**) 같습니다 — 모델에 넣는 순간 생기는 일입니다
+-   ⚠️ **"보정 변수는 많을수록 안전하다"는 건 틀렸습니다.** 무엇의 자손인지 모르는 변수를 넣으면 이런 상관을 만들어냅니다
+
+### 5) 🧪 실습: d-분리를 수치로 확인 — 흡연 network
+
+원자료의 예제 network입니다.
+
+$$x_1(\text{흡연}) \to x_2(\text{폐렴}),\quad x_1 \to x_3(\text{폐암}),\quad x_2 \to x_4(\text{피로}),\quad x_3 \to x_4,\quad x_3 \to x_5(\text{엑스레이})$$
+
+```{r}
+#| eval: true
+sim_bn <- function(n, seed) {
+  set.seed(seed)
+  rb <- function(p) rbinom(length(p), 1, p)
+  x1 <- rbinom(n, 1, .30)                                # smoking
+  x2 <- rb(ifelse(x1 == 1, .35, .10))                    # pneumonia
+  x3 <- rb(ifelse(x1 == 1, .25, .03))                    # lung cancer
+  x4 <- rb(c(.08, .55, .60, .90)[1 + x2 + 2*x3])         # fatigue  (collider)
+  x5 <- rb(ifelse(x3 == 1, .88, .07))                    # x-ray
+  data.frame(x1, x2, x3, x4, x5)
+}
+dbn <- sim_bn(200000, 67)
+
+# 조건부 상호정보량 I(A ; B | Z), 단위 bit
+cmi <- function(d, a, b, z = character(0)) {
+  zz <- if (length(z)) do.call(paste, c(d[z], sep = "|")) else rep("", nrow(d))
+  sum(vapply(unique(zz), function(lv) {
+    s <- d[zz == lv, , drop = FALSE]
+    tb <- table(s[[a]], s[[b]]) / nrow(s)
+    (nrow(s)/nrow(d)) * sum(ifelse(tb > 0, tb * log2(tb / outer(rowSums(tb), colSums(tb))), 0))
+  }, numeric(1)))
+}
+data.frame(
+  conditioning_set = c("{} (nothing)", "{x2}", "{x3}", "{x2, x3}"),
+  I_x1_x4_given_Z  = round(c(cmi(dbn,"x1","x4"), cmi(dbn,"x1","x4","x2"),
+                             cmi(dbn,"x1","x4","x3"), cmi(dbn,"x1","x4",c("x2","x3"))), 5),
+  d_separated = c("no", "no", "no", "yes"))
+```
+
+```{r}
+#| eval: true
+# 합류의 반대 방향 : x2 와 x3 는 x1 을 통해서만 연결되어 있다
+data.frame(
+  conditioning_set = c("{} (nothing)", "{x1}", "{x1, x4}"),
+  I_x2_x3_given_Z  = round(c(cmi(dbn,"x2","x3"), cmi(dbn,"x2","x3","x1"),
+                             cmi(dbn,"x2","x3",c("x1","x4"))), 5),
+  note = c("linked through x1", "chain blocked -> independent",
+           "collider x4 opens it again"))
+```
+
+-   $I(x_1; x_4)$ 는 0.04159 → $x_2$ 만 조건으로 두면 0.01257(아직 $x_1\to x_3 \to x_4$ 가 열려 있음) → **$\{x_2, x_3\}$ 을 모두 두면 0.00001**
+-   ✅ 원자료 예제 10-5 그대로입니다 — $d\text{-}sep(\text{흡연},\text{피로}\mid\text{폐렴})$ 은 **아니고**, $d\text{-}sep(\text{흡연},\text{피로}\mid\{\text{폐렴},\text{폐암}\})$ 은 **맞습니다**
+-   폐렴과 폐암은 흡연을 통해 연결(0.00705)되어 있고 흡연을 조건으로 두면 **0.00000**이 됩니다
+-   ⚠️ 그런데 **거기에 피로(합류)까지 넣으면 0.01416으로 다시 열립니다.** "다 넣으면 낫다"가 아니라는 증거
+
+### 6) 학습 — 구조와 모수
+
+| 상황 | 방법 |
+|---|---|
+| **구조를 안다** | CPT를 세기만 하면 됨 (sample counting) |
+| **구조를 모른다** | 가능한 DAG 수가 node 수에 **초지수적** → **NP-hard**. 점수함수(BIC/AIC/BDeu)를 정하고 **greedy 탐색** |
+| **값이 일부 없다** | 7절 EM |
+
+$$\text{BIC}(B\mid D) = \sum_i \left[\sum_{\pi} \sum_{v} N_{i\pi v}\log\frac{N_{i\pi v}}{N_{i\pi}}\right] - \frac{\log n}{2}\,|\Theta|$$
+
+### 7) 🧪 실습: 구조를 되찾을 수 있나
+
+```{r}
+#| eval: true
+bic_node <- function(d, i, pa) {
+  n <- nrow(d)
+  key <- if (length(pa)) do.call(paste, c(d[pa], sep = "|")) else rep("", n)
+  tb <- table(key, d[[i]]); rs <- rowSums(tb)
+  sum(ifelse(tb > 0, tb * log(tb / rs), 0)) - 0.5 * log(n) * nrow(tb) * (ncol(tb) - 1)
+}
+score_dag <- function(d, A) sum(vapply(seq_len(ncol(d)),
+  function(i) bic_node(d, i, which(A[, i] == 1)), numeric(1)))
+acyclic <- function(A) {                       # 도달가능행렬의 대각이 0이면 비순환
+  R <- A
+  for (k in 1:ncol(A)) { R <- (R + R %*% A) > 0; storage.mode(R) <- "numeric" }
+  all(diag(R) == 0)
+}
+hc <- function(d, A0 = NULL) {                 # add / delete / reverse 중 최선을 반복
+  p <- ncol(d)
+  A <- if (is.null(A0)) matrix(0, p, p, dimnames = list(names(d), names(d))) else A0
+  s <- score_dag(d, A)
+  repeat {
+    best <- NULL; bs <- s
+    for (i in 1:p) for (j in 1:p) if (i != j) for (op in c("add","del","rev")) {
+      B <- A
+      if (op == "add") { if (A[i,j] == 1 || A[j,i] == 1) next; B[i,j] <- 1 }
+      if (op == "del") { if (A[i,j] == 0) next; B[i,j] <- 0 }
+      if (op == "rev") { if (A[i,j] == 0) next; B[i,j] <- 0; B[j,i] <- 1 }
+      if (!acyclic(B)) next
+      sc <- score_dag(d, B); if (sc > bs + 1e-8) { bs <- sc; best <- B }
+    }
+    if (is.null(best)) break
+    A <- best; s <- bs
+  }
+  list(A = A, score = s)
+}
+rand_dag <- function(p, nm, m = 4) {           # 무작위 시작점 (위상순서를 섞어 생성)
+  ord <- sample(p); A <- matrix(0, p, p, dimnames = list(nm, nm))
+  cand <- which(upper.tri(matrix(0, p, p)), arr.ind = TRUE)
+  pick <- cand[sample(nrow(cand), min(m, nrow(cand))), , drop = FALSE]
+  for (r in seq_len(nrow(pick))) A[ord[pick[r,1]], ord[pick[r,2]]] <- 1
+  A
+}
+hc_restart <- function(d, R = 8, seed = 9) {
+  set.seed(seed); best <- hc(d)
+  for (r in 1:R) { h <- hc(d, rand_dag(ncol(d), names(d))); if (h$score > best$score) best <- h }
+  best
+}
+```
+
+```{r}
+#| eval: true
+true_A <- local({
+  A <- matrix(0, 5, 5, dimnames = list(paste0("x",1:5), paste0("x",1:5)))
+  A["x1","x2"] <- A["x1","x3"] <- A["x2","x4"] <- A["x3","x4"] <- A["x3","x5"] <- 1; A })
+edges_of <- function(A) { w <- which(A == 1, arr.ind = TRUE)
+  sort(paste0(rownames(A)[w[,1]], "->", colnames(A)[w[,2]])) }
+skel_of  <- function(A) { w <- which(A == 1, arr.ind = TRUE)
+  sort(unique(apply(w, 1, function(r)
+    paste(sort(c(rownames(A)[r[1]], colnames(A)[r[2]])), collapse = "-")))) }
+te_ <- edges_of(true_A); ts_ <- skel_of(true_A)
+
+fits <- lapply(c(200, 1000, 5000), function(n) {
+  d <- sim_bn(n, 68); list(n = n, d = d, g = hc(d), r = hc_restart(d, 8, 9)) })
+do.call(rbind, lapply(fits, function(f) data.frame(
+  n = f$n,
+  greedy_skeleton  = paste0(length(intersect(skel_of(f$g$A), ts_)), "/5"),
+  greedy_extra     = length(setdiff(skel_of(f$g$A), ts_)),
+  greedy_BIC       = round(f$g$score, 1),
+  restart_skeleton = paste0(length(intersect(skel_of(f$r$A), ts_)), "/5"),
+  restart_direction= paste0(length(intersect(edges_of(f$r$A), te_)), "/5"),
+  restart_BIC      = round(f$r$score, 1),
+  true_DAG_BIC     = round(score_dag(f$d, true_A), 1))))
+```
+
+```{r}
+#| eval: true
+#| fig-width: 7.2
+#| fig-height: 3.6
+best5 <- fits[[3]]
+draw_dag <- function(A, main) {
+  pos <- rbind(x1 = c(0, 2), x2 = c(-1, 1), x3 = c(1, 1), x4 = c(-0.4, 0), x5 = c(1.8, 0))
+  plot(pos, type = "n", axes = FALSE, xlab = "", ylab = "",
+       xlim = c(-1.6, 2.4), ylim = c(-0.5, 2.5), main = main)
+  w <- which(A == 1, arr.ind = TRUE)
+  for (r in seq_len(nrow(w))) {
+    a <- pos[w[r,1], ]; b <- pos[w[r,2], ]
+    d <- (b - a) / sqrt(sum((b - a)^2))
+    arrows(a[1] + .22*d[1], a[2] + .22*d[2], b[1] - .22*d[1], b[2] - .22*d[2],
+           length = .09, col = "#7d8597", lwd = 1.6)
+  }
+  points(pos, pch = 21, bg = "white", col = "#2e8b7a", cex = 3.6, lwd = 2)
+  text(pos, rownames(pos), cex = .82)
+}
+par(mfrow = c(1, 3), mar = c(0.5, 0.5, 3, 0.5))
+draw_dag(true_A,       "True DAG")
+draw_dag(best5$g$A,    "Greedy from empty (n=5000)")
+draw_dag(best5$r$A,    "Greedy + 8 restarts")
+```
+
+-   $n = 200$ 에서는 빈 그래프에서 출발한 greedy도 **5/5 정확**합니다 — 데이터가 적어 BIC 벌점이 군더더기를 막아줍니다
+-   $n = 5000$ 에서 greedy는 **엉뚱한 국소 최적**에 갇힙니다(가짜 edge 1개, 방향 대부분 반대). BIC도 -9550.3으로 진짜 구조(-9543.0)보다 **나쁩니다**
+-   ✅ **random restart 8번이면 진짜 DAG를 방향까지 완전히 복원**하고 BIC가 -9543.0으로 진짜 구조와 정확히 일치합니다
+-   ⚠️ node 5개짜리 장난감에서도 greedy가 갇힙니다. **수천 개 유전자에서 구조 학습을 한다면 그 결과를 "발견"이라고 부르기 전에 한참 생각해야 합니다**
+-   $n = 1000$ 에서는 방향이 2/5뿐인데 BIC(-2022.9)는 진짜 구조(-2023.1)보다 **높습니다** — **Markov 동치류** 안에서는 방향을 관측 데이터만으로 구분할 수 없습니다
+
+### 8) 추론과 생명과학 맥락
+
+-   **확률 추론** — 몇 다리 건넌 node의 확률. $P(\text{폐암}\mid \text{엑스레이 양성}, \text{피로 없음})$ 같은 질문
+-   정확 추론은 node가 많으면 불가능 → **d-분리로 관련 없는 부분을 먼저 잘라내고**, Gibbs sampling·변분 추론 같은 근사법
+-   **유전자 조절 네트워크(GRN)**가 곧 Bayesian network입니다 — node = 유전자, edge = 조절 관계, 데이터 = 발현 프로파일
+
+::: {.callout-warning}
+## ⚠️ 발현 데이터로 GRN을 추론할 때
+
+-   **방향은 관측 데이터만으로 결정되지 않습니다.** Markov 동치류 안에서는 어느 쪽이든 같은 점수입니다. 방향을 주장하려면 **개입(knockout, 과발현)**이나 시계열이 있어야 합니다
+-   **$p \gg n$** — 유전자 수천 개에 샘플 수십 개. 정직하게 하려면 후보 유전자를 미리 줄이거나 부모 수를 제한해야 합니다
+-   **비순환 제약이 생물학과 맞지 않습니다.** 피드백 루프는 DAG로 표현되지 않습니다 → 동적 Bayesian network(시계열)로 풀어야 함
+-   **잠복 교란자** — 측정되지 않은 전사인자가 두 유전자를 함께 움직이면 둘 사이에 가짜 edge가 생깁니다
+-   구조 학습 결과는 **가설 생성**이지 인과 규명이 아닙니다
+:::
+
+------------------------------------------------------------------------
+
+## 7. EM algorithm 🌀
+
+### 1) 관측되지 않은 변수
+
+지금까지는 모든 값이 관측되었다고 가정했습니다. 실제로는 아닙니다 — **숨은 변수 $\mathbf{Z}$**가 있으면 log likelihood 안에 합이 들어와 미분이 닫히지 않습니다.
+
+$$LL(\Theta\mid\mathbf{X}) = \ln P(\mathbf{X}\mid\Theta) = \ln \sum_{\mathbf{Z}} P(\mathbf{X},\mathbf{Z}\mid\Theta)$$
+
+**EM은 닭과 달걀을 번갈아 풉니다.**
+
+-   **E-step** — 현재 $\Theta^t$ 로 $\mathbf{Z}$ 의 기댓값(책임도)을 계산
+$$Q(\Theta\mid\Theta^t) = \mathbb{E}_{\mathbf{Z}\mid\mathbf{X},\Theta^t}\, LL(\Theta\mid\mathbf{X},\mathbf{Z})$$
+-   **M-step** — $\mathbf{Z}$ 를 안다고 치고 MLE로 $\Theta$ 갱신
+$$\Theta^{t+1} = \arg\max_{\Theta} Q(\Theta\mid\Theta^t)$$
+
+✅ **매 반복마다 관측 데이터의 log likelihood가 줄지 않는다**는 것이 보장됩니다. 단, **전역 최적은 보장되지 않습니다**(초기값 의존).
+
+### 2) 🧪 실습: label이 40개뿐일 때
+
+숨은 변수가 **label 자체**인 경우가 EM의 뼈대를 가장 잘 보여줍니다. 실험은 비싸고 샘플은 많은 상황 — 오믹스에서 흔합니다.
+
+```{r}
+#| eval: true
+# 소프트 카운트로 학습하는 naive Bayes (R = n x K 책임도 행렬)
+nb_fit_soft <- function(X, R, lev, lambda = 1) {
+  prior <- (colSums(R) + lambda) / (nrow(R) + lambda * length(lev)); names(prior) <- lev
+  cond <- lapply(X, function(col) {
+    M <- sapply(seq_along(lev), function(k) tapply(R[, k], col, sum))
+    M[is.na(M)] <- 0; dimnames(M) <- list(levels(col), lev)
+    sweep(M + lambda, 2, colSums(M) + lambda * nrow(M), "/")
+  })
+  list(prior = prior, cond = cond, cls = lev, vars = names(X))
+}
+loglik <- function(m, X) { lp <- nb_logpost(m, X); sum(logsumexp(lp)) }
+
+trE <- make_clin(600, 111); teE <- make_clin(4000, 222)
+set.seed(77)
+lab <- sample(nrow(trE), 40)                     # 600명 중 40명만 label이 있다
+lev <- levels(trE$y); Xall <- trE[vr]
+
+m_lab <- nb_fit(trE[lab, vr], droplevels(trE$y[lab]), 1)   # label 있는 것만
+m_all <- nb_fit(trE[vr], trE$y, 1)                          # oracle
+
+R0 <- matrix(0, nrow(trE), 2, dimnames = list(NULL, lev))
+R0[cbind(lab, as.integer(trE$y[lab]))] <- 1
+mE <- m_lab; hist_ll <- numeric(0)
+for (it in 1:30) {
+  lp <- nb_logpost(mE, Xall)                               # ---- E-step
+  P  <- exp(lp - apply(lp, 1, max)); P <- P / rowSums(P)
+  Rn <- R0; Rn[-lab, ] <- P[-lab, ]                        # label 있는 행은 고정
+  mE <- nb_fit_soft(Xall, Rn, lev, 1)                      # ---- M-step
+  hist_ll <- c(hist_ll, loglik(mE, Xall))
+}
+c(first_loglik = round(hist_ll[1], 3), last_loglik = round(tail(hist_ll, 1), 3))
+all(diff(hist_ll) > -1e-8)             # log-likelihood가 단조 증가하는가
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6
+#| fig-height: 3.4
+#| message: false
+ggplot(data.frame(it = seq_along(hist_ll), ll = hist_ll), aes(it, ll)) +
+  geom_line(colour = "#2e8b7a", linewidth = .9) +
+  geom_point(colour = "#2e8b7a", size = 1.5) +
+  labs(x = "EM iteration", y = "observed-data log-likelihood") +
+  theme_minimal()
+```
+
+```{r}
+#| eval: true
+data.frame(
+  model = c("labeled only (n = 40)", "EM (40 labeled + 560 unlabeled)",
+            "oracle (all 600 labeled)"),
+  test_accuracy = round(c(mean(nb_predict(m_lab, teE[vr]) == teE$y),
+                          mean(nb_predict(mE,    teE[vr]) == teE$y),
+                          mean(nb_predict(m_all, teE[vr]) == teE$y)), 4))
+```
+
+```{r}
+#| eval: true
+round(cbind(labeled_only = m_lab$cond$biomarker[, "R"],
+            EM           = mE$cond$biomarker[, "R"],
+            oracle       = m_all$cond$biomarker[, "R"]), 4)
+```
+
+-   log likelihood가 **-3002.487 → -2999.288로 단조 증가**합니다 (이론 그대로)
+-   정확도는 **0.7522 → 0.7732**, oracle 0.7847까지의 간격을 **약 2/3 메웠습니다**
+-   $P(\text{biomarker = high}\mid R)$ 추정도 0.4545 → **0.5069**로 oracle(0.5041)에 붙습니다
+-   ✅ **label 없는 데이터가 공짜로 일했습니다.** 생성 모델이라서 가능한 일입니다 — 로지스틱회귀는 이렇게 못 씁니다
+
+::: {.callout-tip}
+## 원자료의 "수박 꼭지" 문제는 어떻게 되나
+
+원자료의 예(feature 값 하나가 결측)도 같은 기계로 풉니다 — E-step에서 결측 feature의 값에 대한 분포를 구하고, M-step에서 소수(fractional) 카운트로 CPT를 갱신합니다.
+
+다만 **naive Bayes에서 label이 관측되어 있고 결측이 완전 무작위(MCAR)라면**, 조건부 독립 때문에 다른 feature가 결측값에 대해 아무 정보도 주지 않습니다. 그래서 EM은 **그 feature를 가진 행만으로 센 것(available-case)과 같은 답**으로 수렴합니다. EM이 진짜 일을 하려면 **결측이 다른 변수와 얽혀 있거나(위의 label 예), 모델에 의존 구조가 있어야** 합니다.
+:::
+
+⚠️ EM은 만능이 아닙니다.
+
+-   **모델이 틀리면 unlabeled 데이터가 오히려 해롭습니다** — 잘못된 생성 모델을 더 확신하게 만듭니다
+-   **초기값 의존** — 여러 초기값에서 돌려 log likelihood가 가장 높은 해를 고를 것
+-   **결측이 무작위가 아니면**(MNAR) EM도 편향을 고쳐주지 못합니다
+-   W12의 **Gaussian mixture model**이 EM의 대표적 응용입니다 — 그때 숨은 변수는 "어느 군집 소속인가"입니다
+
+------------------------------------------------------------------------
+
+## 8. 장단점과 실무 지침 ⚠️
+
+### 1) 장점
+
+-   **학습이 사실상 표 세기** — $O(nd)$. 수천 개 feature도 순식간에 학습됩니다
+-   **$p \gg n$ 에서 발산하지 않음** — 계수를 추정하지 않으므로 완전 분리·랭크 결손 문제가 없습니다
+-   **결측에 강함** — 없는 feature는 곱에서 빼면 그만입니다 (대치 불필요)
+-   **증분 학습** — 새 샘플이 오면 카운트만 더하면 됩니다
+-   **해석 가능** — feature별 로그 기여를 그대로 읽을 수 있습니다
+-   **생성 모델** — label 없는 데이터를 쓸 수 있고(7절), 새 샘플을 생성할 수 있습니다
+
+### 2) 단점과 대처
+
+| 문제 | 내용 | 대처 |
+|---|---|---|
+| **독립 가정 위반** | 중복 feature를 여러 번 셈 | **AODE / TAN** (5절), 상관 높은 feature 사전 제거, PCA 후 적용 |
+| **확률이 과신됨** | 정확도 0.66인데 확신은 0.82 | **보정 필수** (W4). Platt scaling, isotonic |
+| **zero frequency** | 빈 칸 하나가 곱 전체를 0으로 | **Laplace smoothing**. 빈 칸 개수를 먼저 셀 것 |
+| **연속형 가정** | Gaussian이 아니면 어긋남 | 이산화(binning), kernel density, 또는 변환 |
+| **구조 학습 불안정** | greedy가 국소 최적에 갇힘 | **random restart**, bootstrap으로 edge 신뢰도 |
+| **인과 주장 불가** | 관측 데이터로는 방향 미결정 | 개입 실험·시계열. "가설 생성"으로만 보고 |
+
+::: {.callout-warning}
+## ⚠️ Bayes 분류기를 논문에 쓸 때
+
+-   **naive Bayes의 사후확률을 위험도로 보고하지 말 것.** 반드시 보정 곡선과 Brier score를 함께 (W4)
+-   **feature 간 상관을 먼저 보고할 것** — 독립 가정이 얼마나 위반되는지가 결과의 신뢰도입니다
+-   **Laplace $\lambda$ 를 명시할 것.** 기본값 1이라도 적어야 재현됩니다. 빈 칸 개수도 함께
+-   **Bayesian network의 edge 방향을 인과로 서술하지 말 것.** Markov 동치류 안에서는 구분 불가능합니다
+-   **구조 학습은 bootstrap으로 edge 출현 빈도를 보고**할 것. 단일 구조 그림은 과신을 부릅니다
+-   **collider를 보정 변수로 넣지 말 것** — 결과의 자손을 모델에 넣으면 없던 연관이 생깁니다 (6절)
+-   EM을 썼다면 **초기값과 수렴 기준**을 명시. 여러 초기값 중 최선을 골랐다면 그것도
+:::
+
+::: {.callout-important}
+## Where this ends up
+
+-   MAP ↔ 정규화 연결 → W6 (ridge·lasso를 "왜 그 벌점인가"로 되돌려 읽기)
+-   MLE ↔ 손실함수 연결 → W5 (squared loss, log loss가 어디서 왔는지)
+-   비대칭 손실과 임계값 이동 → W4 (threshold-moving, class imbalance)
+-   확률 보정 → W4 (calibration, Brier score)
+-   EM → **W12의 Gaussian mixture model**이 바로 다음 응용
+-   조건부 독립·그래프 분해 → W13의 그래프 기반 군집화(kNN graph, Louvain)
+-   collider bias와 보정 변수 선택 → W14의 모델 해석과 보고
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   사후확률은 **likelihood × prior / 정규화 상수**. 어느 class를 고를지만 정할 때는 **분자만** 비교하면 됩니다
+-   **Bayes optimal classifier**는 조건부 위험을 최소화하고, 0-1 손실에서는 사후확률 최대 class를 고릅니다
+-   실습 — 진짜 분포를 정하면 정확도 상한이 **0.7977**. 로지스틱 0.7929, kNN 0.7906, 트리 0.7919가 **전부 그 아래에 모입니다**
+-   손실이 비대칭이면 임계값이 $1/(1+L)$ 로 이동. $L=10$ 에서 민감도 0.986 / 특이도 0.293
+-   **MLE는 곧 최소제곱**입니다 — Gaussian 잡음 가정에 로그를 취하면 L2 loss가 나옵니다. `optim`과 `lm()` 계수가 넷째 자리까지 일치
+-   ⚠️ 단 $\sigma$ 는 다릅니다 — MLE 0.7501($\div n$) vs `lm` 0.7597($\div\, n{-}p$)
+-   **MAP = 정규화.** Gaussian prior → Ridge이고 $\lambda = \sigma^2/\sigma_w^2$. $\sigma_w = 0.1$ 이면 $\lambda = 64$, $\sigma_w\to\infty$ 면 MLE로 복귀
+-   **Laplace prior → Lasso.** 0에서의 첨점이 계수를 정확히 0으로 보냅니다 — $p{=}200, n{=}60$ 에서 **186개가 정확히 0**, ridge는 0개
+-   **naive Bayes** — 조건부 독립으로 $2^d$ 를 $d\times$(level 수)로 줄입니다. 임상 데이터에서 **0.7672 vs 로지스틱 0.7675**로 동점
+-   **Laplace smoothing은 빈 칸이 있을 때만 일합니다.** 임상 데이터(빈 칸 0개)는 $\lambda$ 무관, SNP 데이터(6000칸 중 **5개**)는 0.5305 → 0.5692
+-   $\lambda = 0$ 이면 사후확률이 **정확히 0** — 다른 feature가 아무리 반대를 가리켜도 무의미
+-   **Gaussian NB 0.8790 > LDA 0.8732**, QDA 0.9080. 상관을 무시한 손해보다 class별 분산을 얻은 이득이 컸습니다
+-   $p\gg n$ — 진실이 희소하면 **lasso**(0.6898 vs 0.6392), 다유전자형이면 **naive Bayes**(0.5598 vs 0.5522, 게다가 안정적)
+-   정규화 없는 로지스틱은 $p{=}300$ 에서 **train 1.0000 / test 0.5118**
+-   **중복 feature가 naive Bayes를 무너뜨립니다** — $\rho{=}0.95$ 에서 0.8268 → **0.6648**, AODE는 0.8155 유지
+-   ⚠️ **정확도보다 확률이 먼저 무너집니다** — NB의 평균 확신 0.8213(정확도 0.6648), Brier 0.1804 vs AODE 0.1437
+-   **Bayesian network** — $P(\mathbf{x}) = \prod_i P(x_i\mid \text{parent}(x_i))$
+-   젖은 잔디 — $P(\text{rain})$ 0.2 → 젖은 걸 보면 **0.35769** → 스프링클러가 켜져 있었으면 **0.00683** (explaining away)
+-   **d-분리** — 선형·분기는 조건으로 두면 닫히고, **합류는 조건으로 두면 열립니다**. $I(x_1;x_4)$ 0.04159 → $\{x_2,x_3\}$ 조건에서 0.00001
+-   ⚠️ **collider bias** — 독립인 두 변수의 상관 -0.028이 합류 node를 고정하면 **-0.8411**
+-   구조 학습은 NP-hard. $n{=}5000$ 에서 greedy는 국소 최적에 갇히지만(BIC -9550.3), **restart 8번이면 진짜 DAG를 정확히 복원**(-9543.0)
+-   ⚠️ 방향은 **Markov 동치류** 안에서 구분 불가 — 관측 데이터만으로 인과를 주장할 수 없습니다
+-   **EM** — log likelihood가 -3002.487 → -2999.288로 단조 증가. label 40개 0.7522 → EM 0.7732 → oracle 0.7847
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Prior / Likelihood / Posterior** | 데이터 이전 확률 / class별 데이터 확률 / 데이터 이후 확률 |
+| **Conditional risk** | $R(c_i\mid\mathbf{x}) = \sum_j \lambda_{ij}P(c_j\mid\mathbf{x})$ |
+| **Bayes optimal classifier** | 조건부 위험 최소화. 0-1 손실이면 사후확률 최대 class |
+| **Bayes risk** | $R(h^*)$. 어떤 분류기도 넘을 수 없는 오차 하한 |
+| **Discriminative / Generative** | $P(c\mid\mathbf{x})$ 를 직접 / $P(\mathbf{x},c)$ 를 모델링 |
+| **MLE** | 모수는 unknown but fixed. Gaussian 잡음 가정 → L2 loss |
+| **MAP** | 모수에 prior. **정규화와 같은 것**. $\lambda = \sigma^2/\sigma_w^2$ |
+| **Naïve 가정** | class가 주어지면 모든 feature가 조건부 독립 |
+| **Laplace smoothing** | $\frac{|D_{c,x_i}|+\lambda}{|D_c|+\lambda N_i}$. Dirichlet prior와 같음 |
+| **ODE / SPODE / TAN** | feature마다 parent 최대 1개 / 모두 같은 super-parent / 상호정보량 트리 |
+| **AODE** | 각 feature를 super-parent로 한 SPODE의 앙상블. 모델 선택 불필요 |
+| **Bayesian network** | $\langle$ DAG, CPT $\rangle$. $P(\mathbf{x})=\prod_i P(x_i\mid \pi_i)$ |
+| **d-separation** | 모든 chain이 $W$ 로 폐쇄되면 조건부 독립 |
+| **Collider** | $a\to b\leftarrow c$. **조건으로 두면 오히려 열림** (Berkson's paradox) |
+| **Markov equivalence** | 같은 skeleton + 같은 v-구조. 관측만으로는 방향 구분 불가 |
+| **EM** | E-step 책임도 계산 ↔ M-step MLE 갱신. log likelihood 단조 증가 |
+
+## ➕ References
+
+-   Duda RO, Hart PE, Stork DG. *Pattern Classification*, 2nd ed. Wiley, 2001. Ch. 2–3.
+-   Bishop CM. *Pattern Recognition and Machine Learning*. Springer, 2006. Ch. 1–2, 8, 9.
+-   Domingos P, Pazzani M. On the optimality of the simple Bayesian classifier under zero-one loss. *Machine Learning* 1997;29:103–130.
+-   Ng AY, Jordan MI. On discriminative vs. generative classifiers. *NIPS 2001*:841–848.
+-   Friedman N, Geiger D, Goldszmidt M. Bayesian network classifiers. *Machine Learning* 1997;29:131–163.
+-   Webb GI, Boughton JR, Wang Z. Not so naive Bayes: aggregating one-dependence estimators. *Machine Learning* 2005;58(1):5–24.
+-   Pearl J. *Probabilistic Reasoning in Intelligent Systems*. Morgan Kaufmann, 1988.
+-   Pearl J. *Causality: Models, Reasoning, and Inference*, 2nd ed. Cambridge University Press, 2009.
+-   Koller D, Friedman N. *Probabilistic Graphical Models*. MIT Press, 2009.
+-   Dempster AP, Laird NM, Rubin DB. Maximum likelihood from incomplete data via the EM algorithm. *JRSS-B* 1977;39(1):1–38.
+-   Friedman N, Linial M, Nachman I, Pe'er D. Using Bayesian networks to analyze expression data. *J Comput Biol* 2000;7(3–4):601–620.
+-   Scutari M. Learning Bayesian networks with the bnlearn R package. *J Stat Softw* 2010;35(3):1–22.
+-   Nigam K, McCallum AK, Thrun S, Mitchell T. Text classification from labeled and unlabeled documents using EM. *Machine Learning* 2000;39:103–134.
+-   Greenland S. Quantifying biases in causal models: classical confounding vs collider-stratification bias. *Epidemiology* 2003;14(3):300–306.
+
+------------------------------------------------------------------------
+
+[← W10. SVM과 Kernel Methods](10_svm.qmd)

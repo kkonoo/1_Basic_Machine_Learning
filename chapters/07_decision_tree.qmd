@@ -1,0 +1,680 @@
+---
+title: "W7. Decision Tree"
+description: "분할 기준, 가지치기, 결측치, 축에 평행한 경계의 한계"
+author: "Eunji Ha"
+date: today
+
+# ── AI 채팅 위젯 설정 ──────────────────────────────────────────
+format:
+  html:
+    include-in-header:
+      text: |
+        <meta name="ai-title" content="W7. Decision Tree">
+        <meta name="ai-context" content="
+        이 챕터는 의사결정나무를 다룹니다.
+        트리는 divide-and-conquer로 데이터를 재귀 분할하며, root node, internal node,
+        leaf node로 이루어집니다. 분할 기준은 불순도를 얼마나 줄이는가이고,
+        information entropy, Gini index, misclassification error 세 지표가 있습니다.
+        entropy는 p=0.5에서 최대 1 bit, Gini는 최대 0.5이며 Gini는 entropy의
+        이차 근사라 순위가 거의 같고 계산이 빠릅니다.
+        information gain은 다범주 feature를 선호하는 편향이 있습니다.
+        실습에서 14명짜리 표의 환자번호는 gain 0.985로 stage의 0.689보다 크지만,
+        intrinsic value가 3.807이라 gain ratio는 0.259로 stage의 0.689보다 작습니다.
+        즉 gain ratio가 환자번호 같은 무의미한 고유 식별자를 걸러냅니다.
+        가지치기는 pre-pruning과 post-pruning이 있고, CART는 cost-complexity
+        pruning을 씁니다. 실습에서 cp=0으로 키운 16-leaf 트리는 train 0.904 / test 0.837인데,
+        교차검증 오차가 최소인 지점으로 가지치기하면 leaf 5개에 test 0.853으로 오히려 좋아집니다.
+        1-SE 규칙은 leaf 4개, test 0.833으로 조금 손해 보고 단순함을 얻습니다.
+        결측치는 rpart가 surrogate split으로 행을 버리지 않고 처리합니다.
+        실습에서 CRP가 높을수록 결측이 많은 MNAR 상황을 만들면, complete case만 쓸 때
+        표본의 고CRP 비율이 30.4퍼센트에서 14.6퍼센트로 떨어집니다.
+        정확도는 0.837 대 0.857로 차이가 작지만, 학습한 집단 자체가 달라진 것이 문제입니다.
+        트리의 경계는 축에 평행하므로 대각선 경계를 계단으로 근사합니다.
+        실습에서 같은 데이터를 45도 회전시키면 leaf가 9개에서 2개로 줄고
+        test 정확도는 0.90에서 0.94로 오릅니다. 트리는 회전에 불변이 아닙니다.
+        회귀 트리는 leaf의 평균을 예측하므로 계단 함수가 되며,
+        maxdepth 1/3/6에서 leaf 2/8/36, 학습 RMSE 0.385/0.263/0.223으로 계속 떨어집니다.
+        ">
+---
+
+::: {.callout-note}
+## 🎯 Learning objectives
+
+-   트리의 재귀 분할 과정을 설명하고 적합된 트리를 규칙으로 읽을 수 있다
+-   **entropy·Gini·information gain을 손으로 계산할 수 있다**
+-   information gain의 다범주 편향과 gain ratio의 보정을 설명할 수 있다
+-   **가지치기가 왜 test 성능을 올리는지 설명하고 `cp`·1-SE 규칙으로 실행할 수 있다**
+-   결측치를 complete case로 버릴 때 생기는 문제를 말할 수 있다
+-   **축에 평행한 경계의 한계를 알고, 트리가 회전에 불변이 아님을 설명할 수 있다**
+:::
+
+> 🤔 **"CRP가 10을 넘고 60세 이상이면 반응이 나쁘다." — 이 한 문장을 데이터에서 자동으로 찾아낼 수 있을까?**
+
+------------------------------------------------------------------------
+
+## 1. 트리는 어떻게 결정하는가 🌳
+
+### 1) 구조
+
+| 이름 | 개수 | 하는 일 |
+|------|------|---------|
+| **Root node** | 1개 | 모든 데이터가 여기서 시작 |
+| **Internal node** (= decision node) | 여러 개 | 한 feature에 대한 test |
+| **Leaf node** (= terminal node) | 여러 개 | 최종 결정 결과 |
+
+-   root에서 leaf까지의 경로 하나가 **규칙 하나**
+-   leaf의 예측값 — 분류는 그 leaf에 속한 샘플의 다수 class, 회귀는 평균
+
+### 2) Divide-and-conquer
+
+트리 학습은 재귀적입니다.
+
+1.  현재 node의 데이터에서 **가장 좋은 분할 feature와 분할점**을 고른다
+2.  그 기준으로 데이터를 둘(또는 여럿)로 나눈다
+3.  각 부분집합에서 1번을 반복한다
+
+종료 조건은 셋 중 하나입니다.
+
+-   node의 샘플이 모두 **같은 class** → 더 나눌 이유 없음
+-   남은 feature가 없거나 모든 샘플의 feature 값이 **동일** → 나눌 수 없음
+-   node의 샘플 수가 **너무 적음** → 나눠도 의미 없음 (`minsplit`, `minbucket`)
+
+::: {.callout-tip}
+## 탐욕적(greedy) 알고리즘이다
+
+각 단계에서 **지금 가장 좋아 보이는 분할**만 고릅니다. 전체를 놓고 최적의 트리를 찾는 문제는 NP-hard라서, 실용적인 구현은 모두 greedy입니다.
+
+→ 지금 최선이 전체 최선이라는 보장이 없습니다. 같은 데이터를 조금만 바꿔도 트리 구조가 크게 달라지는 **불안정성**의 근원이고, W9의 ensemble이 바로 이 불안정성을 역이용합니다.
+:::
+
+### 3) 🧪 실습: 트리 하나를 끝까지 읽기
+
+진짜 규칙을 심어 둔 데이터를 만들고, 트리가 그 규칙을 되찾는지 봅니다.
+
+-   진짜 규칙 — `(CRP > 10 이고 60세 초과)` **또는** `stage == 4` 이면 반응 확률 0.90, 아니면 0.12
+-   feature 4개(age, crp, stage, sex), 환자 800명 중 500명으로 학습
+
+::: {.panel-tabset}
+
+### R
+
+```{r}
+#| eval: true
+#| message: false
+library(rpart)
+
+set.seed(2026)
+n <- 800
+d <- data.frame(
+  age   = round(rnorm(n, 58, 12)),
+  crp   = round(rexp(n, 1/8), 1),
+  stage = sample(1:4, n, TRUE),
+  sex   = factor(sample(c("F", "M"), n, TRUE))
+)
+true_rule  <- with(d, (crp > 10 & age > 60) | stage == 4)
+d$response <- factor(rbinom(n, 1, ifelse(true_rule, 0.90, 0.12)),
+                     labels = c("No", "Yes"))
+
+set.seed(11)
+idx   <- sample(nrow(d), 500)
+train <- d[idx, ]; test <- d[-idx, ]
+
+fit <- rpart(response ~ age + crp + stage + sex, data = train, method = "class")
+fit
+```
+
+### Python
+
+```{python}
+import numpy as np, pandas as pd
+from sklearn.tree import DecisionTreeClassifier, export_text
+from sklearn.model_selection import train_test_split
+
+rng = np.random.default_rng(2026)
+n = 800
+d = pd.DataFrame({
+    "age":   rng.normal(58, 12, n).round(),
+    "crp":   rng.exponential(8, n).round(1),
+    "stage": rng.integers(1, 5, n),
+    "sex":   rng.choice([0, 1], n),          # sklearn은 숫자만 받는다
+})
+true_rule = ((d.crp > 10) & (d.age > 60)) | (d.stage == 4)
+d["response"] = rng.binomial(1, np.where(true_rule, 0.90, 0.12))
+
+X, y = d.drop(columns="response"), d.response
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, train_size=500, random_state=11)
+
+# sklearn에는 rpart의 cp가 없다. 대신 깊이/leaf 크기로 제어한다
+fit = DecisionTreeClassifier(criterion="gini", min_samples_leaf=20,
+                             random_state=0).fit(X_tr, y_tr)
+print(export_text(fit, feature_names=list(X.columns)))
+```
+
+:::
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 4.8
+par(mar = c(1, 1, 3, 1), xpd = NA)
+plot(fit, uniform = TRUE, branch = 1, compress = FALSE, margin = 0.16)
+text(fit, use.n = TRUE, all = FALSE, cex = 0.9, col = "grey15")
+title("Classification tree (rpart default, cp = 0.01)", line = 1)
+```
+
+```{r}
+#| eval: true
+acc <- function(m, dat) mean(predict(m, dat, type = "class") == dat$response)
+data.frame(
+  leaves    = sum(fit$frame$var == "<leaf>"),
+  train_acc = round(acc(fit, train), 3),
+  test_acc  = round(acc(fit, test), 3)
+)
+```
+
+트리가 찾아낸 규칙을 그대로 읽으면 이렇습니다.
+
+| 경로 | n | Yes 비율 | 해석 |
+|------|---|---------|------|
+| `stage >= 3.5` | 122 | 0.918 | 진짜 규칙의 `stage == 4` 가지 |
+| `stage < 3.5` & `crp >= 8.45` & `age >= 60.5` | 57 | 0.860 | 진짜 규칙의 `crp > 10 & age > 60` 가지 |
+| `stage < 3.5` & `crp >= 8.45` & `age < 60.5` | 73 | 0.137 | 나이가 안 되면 반응 없음 |
+| `stage < 3.5` & `crp < 8.45` | 248 | 0.105 | 나머지 |
+
+-   leaf 4개로 **두 가지 규칙을 모두 되찾았습니다**
+-   분할점은 10이 아니라 **8.45**, 60이 아니라 **60.5** — 트리는 진짜 임계값을 아는 게 아니라 **관측된 데이터에서 가장 잘 나누는 지점**을 고릅니다
+-   ⚠️ 그러니 분할점을 임상적 컷오프처럼 해석하면 안 됩니다. 데이터를 조금만 바꿔도 8.45는 흔들립니다
+
+### 4) 왜 아직도 쓰는가
+
+-   **샘플 단위로 설명 가능** — "이 환자는 stage 4라서 Yes"라고 경로 하나로 말할 수 있음
+-   **전처리가 거의 필요 없음** — 스케일링 불필요, 단조변환(log 등)에 **불변**, 범주형을 그대로 취급
+-   **비선형과 상호작용을 자동으로** — 위 실습의 `crp`와 `age` 상호작용을 따로 지정하지 않았습니다
+-   계산복잡성 대비 예측 성능이 좋고, 결측치도 버리지 않음(4절)
+
+::: {.callout-tip}
+## 그림은 `rpart.plot`이 훨씬 낫습니다
+
+이 사이트는 CI 의존성을 줄이려고 base `plot.rpart`를 쓰지만, 직접 분석할 때는 `rpart.plot::rpart.plot(fit, extra = 104)` 를 쓰면 각 node의 확률과 샘플 비율까지 한눈에 들어옵니다.
+:::
+
+------------------------------------------------------------------------
+
+## 2. 분할 기준 ✂️
+
+### 1) Purity
+
+-   분할 후의 node가 **최대한 같은 class끼리 모이도록** 하는 것이 목표
+-   node의 purity ↑ = uncertainty ↓
+-   "얼마나 섞여 있는가"를 재는 것이 **불순도(impurity)** 지표
+
+### 2) Information entropy
+
+$$\mathrm{Ent}(D) = -\sum_{k=1}^{|\mathcal{Y}|} p_k \log_2 p_k$$
+
+-   $p_k$ — node $D$ 에서 $k$ 번째 class의 비율
+-   값이 **작을수록 purity가 높음**. 한 class만 있으면 0
+-   이진 분류에서 $p = 0.5$ 일 때 최대 **1 bit**
+
+### 3) Gini index
+
+$$\mathrm{Gini}(D) = 1 - \sum_{k=1}^{|\mathcal{Y}|} p_k^2$$
+
+-   "이 node에서 임의로 두 샘플을 뽑았을 때 class가 다를 확률"
+-   이진에서 최대 **0.5** ($p = 0.5$)
+-   $\log$ 가 없어 **계산이 빠름**. CART와 `rpart`의 기본값
+
+### 4) Information gain
+
+분할 전 불순도에서 분할 후 **가중평균** 불순도를 뺀 값입니다.
+
+$$\mathrm{Gain}(D, a) = \mathrm{Ent}(D) - \sum_{v=1}^{V} \frac{|D^v|}{|D|}\,\mathrm{Ent}(D^v)$$
+
+-   $V$ — feature $a$ 로 나눴을 때 생기는 가지 수, $D^v$ — $v$ 번째 가지의 샘플
+-   **gain이 가장 큰 feature로 분할** (ID3의 기준)
+-   가중치 $|D^v|/|D|$ 가 핵심 — 샘플이 많은 가지의 불순도가 더 중요
+
+### 5) 🧪 실습: 불순도 세 지표
+
+```{r}
+#| eval: true
+#| fig-width: 6.5
+#| fig-height: 3.6
+#| message: false
+library(ggplot2)
+
+p <- seq(0.001, 0.999, length.out = 300)
+imp <- data.frame(
+  p       = rep(p, 3),
+  value   = c(-p * log2(p) - (1 - p) * log2(1 - p),   # entropy
+              2 * p * (1 - p),                         # Gini
+              pmin(p, 1 - p)),                         # misclassification
+  measure = rep(c("Entropy (bits)", "Gini", "Misclassification"), each = length(p))
+)
+
+ggplot(imp, aes(p, value, colour = measure)) +
+  geom_line(linewidth = .9) +
+  scale_colour_manual(values = c("Entropy (bits)"    = "#d1495b",
+                                 "Gini"              = "#2e8b7a",
+                                 "Misclassification" = "#7d8597")) +
+  labs(x = "Proportion of class 1", y = "Impurity",
+       colour = NULL,
+       caption = "all three peak at p = 0.5 and vanish at p = 0 or 1") +
+  theme_minimal()
+```
+
+-   셋 다 $p = 0.5$ 에서 최대, 순수한 node(0 또는 1)에서 0
+-   **Gini는 entropy의 이차 근사** — 모양이 거의 같아 실제로 선택 순위가 잘 바뀌지 않음. 그래서 빠른 Gini가 기본값
+-   **misclassification error는 뾰족하고 평평** — 불순도가 줄어도 값이 안 변하는 구간이 있어 **분할 기준으로는 부적합**. 가지치기 단계에서만 씁니다
+
+### 6) Gain ratio — 다범주 편향
+
+information gain에는 **가지를 많이 만드는 feature를 편애하는 편향**이 있습니다. 극단적으로 환자번호로 나누면 모든 leaf가 순수해져 gain이 최대가 됩니다. 물론 쓸모는 0입니다.
+
+$$\mathrm{Gain\_ratio}(D,a) = \frac{\mathrm{Gain}(D,a)}{\mathrm{IV}(a)}, \qquad
+\mathrm{IV}(a) = -\sum_{v=1}^{V} \frac{|D^v|}{|D|} \log_2 \frac{|D^v|}{|D|}$$
+
+-   **IV (intrinsic value)** — feature 자체가 데이터를 얼마나 잘게 쪼개는가. 가지가 많을수록 큼
+-   가지를 많이 만들수록 분모가 커져 **자동으로 벌점**
+-   C4.5의 기준. 단, gain ratio는 반대로 가지가 적은 feature를 편애하므로, C4.5는 **gain이 평균 이상인 후보 중에서** gain ratio가 최대인 것을 고릅니다
+
+### 7) 🧪 실습: gain은 환자번호를 고른다
+
+```{r}
+#| eval: true
+D <- data.frame(
+  sample_id = sprintf("S%02d", 1:14),
+  stage     = c("early","early","late","late","late","early","late",
+                "early","early","late","early","late","late","early"),
+  outcome   = c("No","No","Yes","Yes","Yes","No","Yes",
+                "No","No","Yes","Yes","Yes","Yes","No")
+)
+
+ent  <- function(y) { p <- table(y) / length(y); p <- p[p > 0]; -sum(p * log2(p)) }
+gain <- function(x, y) ent(y) - sum(tapply(y, x, function(s) length(s)/length(y) * ent(s)))
+iv   <- function(x) { p <- table(x) / length(x); -sum(p * log2(p)) }
+
+g <- c(gain(D$stage, D$outcome), gain(D$sample_id, D$outcome))
+v <- c(iv(D$stage), iv(D$sample_id))
+
+data.frame(
+  feature         = c("stage", "sample_id"),
+  gain            = round(g, 4),
+  intrinsic_value = round(v, 4),
+  gain_ratio      = round(g / v, 4)
+)
+```
+
+-   전체 불순도 $\mathrm{Ent}(D) = 0.9852$
+-   **gain 기준** — `sample_id` 0.9852 > `stage` 0.6894 → **환자번호를 고른다**
+-   환자번호는 14개 가지를 만들어 IV가 $\log_2 14 = 3.807$
+-   **gain ratio 기준** — `stage` 0.6894 > `sample_id` 0.2588 → **제대로 고른다**
+
+::: {.callout-warning}
+## 오믹스 데이터에서 실제로 일어나는 일
+
+샘플 ID, 배치 번호, 채취 날짜, 플레이트 위치처럼 **고유값이 많은 열**을 실수로 feature에 남겨두면, 트리는 그것을 먼저 고릅니다. 학습 정확도는 1.0이 되고 test에서 무너집니다.
+
+→ 모델에 넣기 전 feature 목록을 눈으로 확인할 것. 그리고 `rpart`는 gain ratio를 쓰지 않으므로(Gini 기본) 이 방어막이 없습니다.
+:::
+
+------------------------------------------------------------------------
+
+## 3. 가지치기 🪓
+
+### 1) Full tree는 반드시 과적합한다
+
+-   끝까지 키우면 모든 leaf의 purity가 100%
+-   training error는 0에 수렴하지만 **validation error는 감소하다 다시 증가**
+-   그 변곡점에서 가지를 **되돌려 붙이는 것**이 가지치기
+
+### 2) Pre-pruning vs post-pruning
+
+| | **Pre-pruning** | **Post-pruning** |
+|---|---|---|
+| 시점 | 분할 **전**에 중단 판단 | 일단 다 키운 **뒤** 잘라냄 |
+| 기준 | 이 분할이 validation 성능을 올리는가 | 이 가지를 없애면 성능이 나빠지는가 |
+| 계산량 | 적음 | 많음 |
+| 위험 | **지평선 효과** — 지금은 이득이 없어도 한 번 더 나누면 좋아질 분할을 미리 차단 | — |
+| 일반적 성능 | 과소적합 쪽으로 기울기 쉬움 | 보통 더 좋음 |
+| R 구현 | `minsplit`, `minbucket`, `maxdepth` | `prune()` + `cp` |
+
+### 3) Cost-complexity pruning (CART)
+
+`rpart`가 쓰는 방식입니다. leaf 수에 벌점을 매겨 **오차와 복잡도를 함께** 최소화합니다.
+
+$$R_\alpha(T) = R(T) + \alpha\,|T|$$
+
+-   $R(T)$ — 트리 $T$ 의 오분류율, $|T|$ — leaf 수, $\alpha$ — 복잡도 벌점
+-   $\alpha$ 를 0에서 키우면 **가지가 순서대로 잘려나가는 중첩된 트리 열**이 생김
+-   `rpart`의 `cp` 는 이 $\alpha$ 를 root 오차로 나눈 상대값
+-   적절한 $\alpha$ 는 **교차검증(`xerror`)으로 선택** — W6의 λ 선택과 완전히 같은 구조
+
+::: {.callout-tip}
+## 1-SE 규칙
+
+`xerror`가 최소인 지점 대신, **최소값 + 표준오차 1개(`xstd`) 이내에서 가장 단순한 트리**를 고르는 관례입니다. W6의 `lambda.1se`와 같은 발상 — 교차검증 오차 자체가 추정치라서, 최소점을 그대로 믿으면 CV 잡음에 과적합합니다.
+:::
+
+### 4) 🧪 실습: 가지치기가 test 성능을 올린다
+
+```{r}
+#| eval: true
+set.seed(1)
+big <- rpart(response ~ age + crp + stage + sex, data = train, method = "class",
+             control = rpart.control(cp = 0, minsplit = 10, minbucket = 5, xval = 10))
+
+cpt   <- big$cptable
+i_min <- which.min(cpt[, "xerror"])
+thr   <- cpt[i_min, "xerror"] + cpt[i_min, "xstd"]     # 1-SE 기준선
+i_1se <- which(cpt[, "xerror"] <= thr)[1]
+
+p_min <- prune(big, cp = cpt[i_min, "CP"])
+p_1se <- prune(big, cp = cpt[i_1se, "CP"])
+
+data.frame(
+  tree      = c("Full (cp = 0)", "Min xerror", "1-SE rule"),
+  leaves    = c(sum(big$frame$var   == "<leaf>"),
+                sum(p_min$frame$var == "<leaf>"),
+                sum(p_1se$frame$var == "<leaf>")),
+  train_acc = round(c(acc(big, train), acc(p_min, train), acc(p_1se, train)), 3),
+  test_acc  = round(c(acc(big, test),  acc(p_min, test),  acc(p_1se, test)),  3)
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 6.5
+#| fig-height: 3.4
+cp_df <- data.frame(nsplit = cpt[, "nsplit"], xerror = cpt[, "xerror"],
+                    xstd   = cpt[, "xstd"])
+
+ggplot(cp_df, aes(nsplit, xerror)) +
+  geom_errorbar(aes(ymin = xerror - xstd, ymax = xerror + xstd),
+                width = .25, colour = "grey60") +
+  geom_line(linewidth = .8, colour = "#d1495b") +
+  geom_point(size = 1.8, colour = "#d1495b") +
+  geom_hline(yintercept = thr, linetype = 2) +
+  labs(x = "Number of splits", y = "Cross-validated error (xerror)",
+       caption = "dashed = minimum xerror + 1 SE") +
+  theme_minimal()
+```
+
+-   **Full tree** — leaf 16개. train 0.904인데 test 0.837 (전형적 과적합)
+-   **Min xerror** — leaf 5개로 잘라내니 test가 오히려 **0.853으로 상승**
+-   **1-SE** — leaf 4개, test 0.833. 정확도를 조금 내주고 **가장 단순한 트리**를 얻음
+-   가지를 4개 이상 만들어도 `xerror`가 더 떨어지지 않습니다. 그 뒤는 전부 노이즈 학습
+
+------------------------------------------------------------------------
+
+## 4. 연속형 값과 결측치 🔢
+
+### 1) 연속형 값 — bi-partitioning
+
+-   연속형 feature는 후보 분할점 $t$ 를 정해 $\{x \le t\}$ / $\{x > t\}$ 둘로 나눔
+-   후보 $t$ — 정렬한 값들의 **인접한 두 값의 중점**. $n$ 개 값이면 후보는 최대 $n-1$ 개
+-   각 후보의 information gain(또는 Gini 감소)을 모두 계산해 **최대인 곳**을 선택
+-   ⚠️ 이산형 feature는 한 번 쓰면 끝이지만, **연속형은 하위 node에서 또 쓸 수 있습니다** (위 실습에서 `crp`가 두 번 등장)
+
+### 2) 결측치 — 버리지 않는 두 가지 방법
+
+**① 비율 보정 information gain (C4.5)**
+
+$$\mathrm{Gain}(D, a) = \rho \times \left( \mathrm{Ent}(\tilde{D}) - \sum_{v=1}^{V} \tilde{r}_v\,\mathrm{Ent}(\tilde{D}^v) \right)$$
+
+-   $\rho$ — feature $a$ 의 **값이 있는 샘플의 비율**, $\tilde{D}$ — 값이 있는 샘플만 모은 집합
+-   결측이 많은 feature는 $\rho$ 가 작아 **gain이 자동으로 깎임**
+-   분할할 때 결측 샘플은 **모든 가지에 가중치를 나눠** 내려보냄
+
+**② Surrogate split (CART, `rpart`의 기본)**
+
+-   1순위 분할 feature가 결측인 샘플을 위해, **그 분할을 가장 비슷하게 재현하는 대체 feature**를 미리 찾아둠
+-   예: `crp`가 결측이면 이전 방문의 `crp`나 다른 염증 지표로 대신 판정
+-   `summary(fit)` 의 `Surrogate splits` 항목에서 확인할 수 있음
+-   ⚠️ 대체 feature가 **원래 feature와 상관이 있어야** 작동합니다. 상관이 없으면 다수 가지로 보낼 뿐
+
+### 3) 🧪 실습: complete case가 조용히 바꾸는 것
+
+-   **CRP가 높을수록 검사 결측이 많은** 상황 (염증이 심해 검체 품질이 나쁜 경우 — MNAR)
+
+```{r}
+#| eval: true
+set.seed(5)
+tr_na <- train
+tr_na$crp[runif(nrow(tr_na)) < ifelse(tr_na$crp > 10, 0.65, 0.10)] <- NA
+cc <- na.omit(tr_na)
+
+data.frame(
+  dataset  = c("Full training set", "Complete cases only"),
+  n        = c(nrow(tr_na), nrow(cc)),
+  high_crp = round(c(mean(train$crp > 10), mean(cc$crp > 10)), 3),
+  mean_age = round(c(mean(tr_na$age), mean(cc$age)), 1)
+)
+```
+
+```{r}
+#| eval: true
+m_cc  <- rpart(response ~ age + crp + stage + sex, data = cc,    method = "class")
+m_sur <- rpart(response ~ age + crp + stage + sex, data = tr_na, method = "class")
+
+data.frame(
+  model    = c("Trained on complete cases", "Trained on all rows (surrogate)"),
+  n_used   = c(nrow(cc), nrow(tr_na)),
+  leaves   = c(sum(m_cc$frame$var == "<leaf>"), sum(m_sur$frame$var == "<leaf>")),
+  test_acc = round(c(acc(m_cc, test), acc(m_sur, test)), 3)
+)
+```
+
+-   500명 중 137명의 CRP가 사라졌고, complete case는 363명
+-   **고CRP 환자 비율이 0.304 → 0.146으로 반토막** — 나이 분포는 그대로인데 관심 있는 집단만 빠졌습니다
+-   test 정확도는 0.837 vs 0.857로 차이가 작습니다. **이게 함정입니다**
+-   ✅ 진짜 손해는 정확도가 아니라 **모형이 학습한 집단이 달라졌다**는 것. 이 모형의 결론을 원래 코호트에 일반화할 수 없습니다
+-   논문에 쓴다면 — 결측 비율, 결측 메커니즘, 어떻게 처리했는지를 **반드시 보고** (W14의 TRIPOD+AI)
+
+------------------------------------------------------------------------
+
+## 5. 축에 평행한 경계 📐
+
+### 1) 한계
+
+-   각 분할은 `feature < 값` 형태라, 경계는 항상 **한 축에 수직**
+-   진짜 경계가 대각선이면 트리는 **계단으로 근사**할 수밖에 없음
+-   계단을 촘촘히 만들수록 분할이 많아지고 → 과적합, 그리고 해석력도 사라짐
+
+### 2) 🧪 실습: 45도만 돌려도 트리가 달라진다
+
+진짜 경계가 $x_1 + x_2 = 0$ 인 데이터를, **원래 축**과 **45도 회전한 축**에서 각각 학습합니다. 데이터는 완전히 같고 좌표계만 다릅니다.
+
+```{r}
+#| eval: true
+set.seed(7)
+m  <- 600
+gd <- data.frame(x1 = runif(m, -3, 3), x2 = runif(m, -3, 3))
+gd$y <- factor(ifelse(gd$x1 + gd$x2 + rnorm(m, 0, .4) > 0, "B", "A"))
+
+th <- pi / 4                                   # 45도 회전한 좌표
+gd$r1 <-  gd$x1 * cos(th) + gd$x2 * sin(th)
+gd$r2 <- -gd$x1 * sin(th) + gd$x2 * cos(th)
+
+ti <- 1:400; te2 <- 401:m
+t_orig <- rpart(y ~ x1 + x2, data = gd[ti, ], method = "class")
+t_rot  <- rpart(y ~ r1 + r2, data = gd[ti, ], method = "class")
+
+a2 <- function(mod, dat) mean(predict(mod, dat, type = "class") == dat$y)
+data.frame(
+  axes     = c("Original (x1, x2)", "Rotated 45 deg (r1, r2)"),
+  leaves   = c(sum(t_orig$frame$var == "<leaf>"), sum(t_rot$frame$var == "<leaf>")),
+  test_acc = round(c(a2(t_orig, gd[te2, ]), a2(t_rot, gd[te2, ])), 3)
+)
+```
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.8
+grid <- expand.grid(x1 = seq(-3, 3, length.out = 160),
+                    x2 = seq(-3, 3, length.out = 160))
+grid$r1 <-  grid$x1 * cos(th) + grid$x2 * sin(th)
+grid$r2 <- -grid$x1 * sin(th) + grid$x2 * cos(th)
+
+mk <- function(mod, nm) {
+  g <- grid; g$pred <- predict(mod, g, type = "class"); g$panel <- nm; g
+}
+regions <- rbind(mk(t_orig, "Tree on x1, x2"),
+                 mk(t_rot,  "Tree on rotated axes"))
+regions$panel <- factor(regions$panel,
+                        levels = c("Tree on x1, x2", "Tree on rotated axes"))
+
+ggplot(regions, aes(x1, x2)) +
+  geom_raster(aes(fill = pred), alpha = .35) +
+  geom_point(data = gd[te2, ], aes(colour = y), size = .7) +
+  scale_fill_manual(values   = c(A = "#2e8b7a", B = "#d1495b")) +
+  scale_colour_manual(values = c(A = "#2e8b7a", B = "#d1495b")) +
+  facet_wrap(~ panel) +
+  labs(fill = "Predicted", colour = "Actual",
+       caption = "same data, same algorithm - only the coordinate system differs") +
+  theme_minimal()
+```
+
+-   **원래 축** — leaf 9개로 대각선을 계단으로 근사. test 0.900
+-   **회전한 축** — leaf **2개**, 즉 분할 한 번. test 0.940
+-   같은 데이터인데 좌표계만 바꿔 성능과 복잡도가 모두 나아졌습니다
+-   ✅ **트리는 회전에 불변이 아닙니다.** 스케일링에는 불변인데 회전에는 아닙니다
+-   → 그래서 PCA 등으로 축을 돌린 뒤 트리를 쓰면 좋아질 때가 있습니다. 대신 축의 해석력을 잃습니다 (W13)
+
+### 3) Multivariate (oblique) decision tree
+
+-   각 node에서 feature 하나가 아니라 **선형 결합**으로 분할
+
+$$\sum_{i=1}^{d} w_i a_i \le t$$
+
+-   경계가 축에 평행할 필요가 없어져 **대각선을 한 번에** 자름
+-   node마다 작은 선형 분류기를 학습하는 셈 — 트리가 훨씬 작아짐
+-   단점 — 계산량이 크고, `-0.800 × CRP - 0.444 × 나이 ≤ -0.313` 같은 조건은 **해석력이 사라짐**
+-   실무에서는 oblique tree보다 **ensemble(W9)** 로 가는 편이 일반적입니다
+
+------------------------------------------------------------------------
+
+## 6. 알고리즘 계열과 회귀 트리 🧬
+
+### 1) 계열 정리
+
+| | **ID3** | **C4.5** | **CART** | **CHAID** |
+|---|---|---|---|---|
+| 분할 기준 | Information gain | Gain ratio | **Gini** (분류) / SSE (회귀) | 카이제곱 검정 |
+| 분할 형태 | 다지 분할 | 다지 분할 | **항상 이진 분할** | 다지 분할 |
+| 연속형 | 불가 | 가능 | 가능 | 구간화 필요 |
+| 결측치 | 불가 | 비율 보정 | **Surrogate split** | 별도 범주 |
+| 가지치기 | 없음 | 오차 기반 | **Cost-complexity** | 사전 중단 |
+| 회귀 | 불가 | 불가 | **가능** | 가능 |
+| 구현 | — | `RWeka::J48` | **`rpart`**, `sklearn` | `CHAID` |
+
+-   `rpart`와 `sklearn.tree`는 모두 **CART 계열**입니다. 그래서 gain ratio 옵션이 없습니다
+-   `sklearn`은 `criterion="entropy"` 를 줄 수 있지만 분할은 여전히 이진입니다
+
+### 2) 회귀 트리
+
+-   분할 기준을 불순도 대신 **오차제곱합(SSE)** 으로 바꾸면 그대로 회귀에 씁니다
+
+$$\text{SSE} = \sum_{v} \sum_{i \in D^v} (y_i - \bar{y}_v)^2$$
+
+-   leaf의 예측값 = 그 leaf에 속한 샘플의 **평균**
+-   따라서 예측은 **계단 함수** — 구간 안에서는 모두 같은 값
+-   ⚠️ **외삽이 불가능합니다.** 학습 데이터 범위 밖은 가장 가까운 leaf의 평균을 그대로 반복
+
+### 3) 🧪 실습: 깊이가 만드는 계단
+
+```{r}
+#| eval: true
+#| fig-width: 8
+#| fig-height: 3.2
+set.seed(3)
+rd <- data.frame(x = sort(runif(250, 0, 6)))
+rd$y <- sin(rd$x) + rnorm(250, 0, .25)
+
+steps <- do.call(rbind, lapply(c(1, 3, 6), function(dp) {
+  rt <- rpart(y ~ x, data = rd, method = "anova",
+              control = rpart.control(maxdepth = dp, cp = 0, minsplit = 5, xval = 0))
+  data.frame(x = rd$x, fit = predict(rt),
+             panel = sprintf("maxdepth = %d  (%d leaves)",
+                             dp, sum(rt$frame$var == "<leaf>")))
+}))
+
+ggplot(rd, aes(x, y)) +
+  geom_point(size = .7, colour = "grey55") +
+  geom_line(data = steps, aes(x, fit), linewidth = .9, colour = "#d1495b") +
+  facet_wrap(~ panel) +
+  labs(caption = "leaf prediction = mean of that leaf -> piecewise constant") +
+  theme_minimal()
+```
+
+-   `maxdepth = 1` — 분할 한 번, 계단 2칸. 곡선을 전혀 못 따라감
+-   `maxdepth = 3` — 8칸. 사인 곡선의 모양이 보이기 시작
+-   `maxdepth = 6` — 36칸. **노이즈까지 따라가기 시작** (학습 RMSE 0.385 → 0.263 → 0.223으로 계속 떨어지지만, 그건 과적합의 증상입니다)
+-   부드러운 함수를 트리로 근사하려면 계단이 아주 많이 필요합니다 → 회귀는 선형 모델이나 ensemble이 보통 낫습니다
+
+::: {.callout-warning}
+## ⚠️ 트리를 쓸 때 반드시 확인할 것
+
+-   **고유값이 많은 열**(ID, 배치, 날짜)이 feature에 섞여 있지 않은가 — 트리가 가장 먼저 집어 듭니다
+-   **가지치기를 했는가** — `rpart` 기본값(`cp = 0.01`)은 가벼운 사전 가지치기일 뿐, 교차검증 기반이 아닙니다
+-   **분할점을 임상 컷오프로 해석하지 않았는가** — 데이터가 조금만 바뀌어도 흔들립니다
+-   **단일 트리의 성능을 그대로 보고하지 않았는가** — 트리는 불안정합니다. 반복 분할로 분산을 함께 보고할 것
+-   트리의 변수 중요도는 **상관된 feature에서 왜곡**됩니다 (W14)
+:::
+
+::: {.callout-important}
+## Where this ends up
+
+-   트리의 **불안정성을 역이용**하는 bagging과 random forest → W9
+-   잔차를 순차적으로 맞추는 gradient boosting, XGBoost → W9
+-   축에 평행한 경계를 **kernel로 우회**하는 방법 → W10
+-   PCA로 축을 돌린 뒤 트리를 쓰는 전략 → W13
+-   트리 기반 변수 중요도와 SHAP → W14
+:::
+
+------------------------------------------------------------------------
+
+## 📝 Summary
+
+-   트리는 **greedy 재귀 분할** — 매 단계에서 불순도를 가장 많이 줄이는 분할을 고름
+-   불순도는 **entropy**(최대 1 bit) / **Gini**(최대 0.5) / misclassification. Gini는 entropy의 이차 근사라 빠르고 순위가 거의 같음
+-   **information gain은 가지를 많이 만드는 feature를 편애** — 환자번호가 gain 0.985로 stage의 0.689를 이김. gain ratio는 IV 3.807로 나눠 0.259로 끌어내림
+-   **full tree는 반드시 과적합** — leaf 16개 train 0.904 / test 0.837 → 가지치기 후 leaf 5개 test **0.853**
+-   $\alpha$(= `cp`)는 **교차검증으로 선택**, 단순함을 원하면 **1-SE 규칙** (W6의 `lambda.1se`와 같은 구조)
+-   연속형은 인접 값의 중점을 후보로 bi-partitioning, **하위 node에서 다시 쓸 수 있음**
+-   결측치는 **버리지 말 것** — complete case로 고CRP 비율이 0.304 → 0.146으로 바뀜. 정확도 차이는 작아도 **학습한 집단이 달라짐**
+-   **트리는 회전에 불변이 아니다** — 같은 데이터를 45도 돌리면 leaf 9개 → 2개, test 0.900 → 0.940
+-   회귀 트리는 leaf 평균을 예측하는 **계단 함수**이고 **외삽이 불가능**
+
+## 🔑 Key terms
+
+| 용어 | 정의 |
+|------|------|
+| **Divide-and-conquer** | node를 재귀적으로 분할해 트리를 키우는 전략 |
+| **Purity / impurity** | node 안 class가 얼마나 한쪽으로 모여 있는가 |
+| **Information entropy** | $-\sum p_k \log_2 p_k$. 이진에서 최대 1 bit |
+| **Gini index** | $1 - \sum p_k^2$. 두 샘플의 class가 다를 확률. CART 기본 |
+| **Information gain** | 분할 전 불순도 − 분할 후 가중평균 불순도 |
+| **Intrinsic value (IV)** | feature가 데이터를 얼마나 잘게 쪼개는가. gain ratio의 분모 |
+| **Gain ratio** | gain / IV. 다범주 편향을 보정 (C4.5) |
+| **Pre-pruning** | 분할하기 전에 중단. 빠르지만 지평선 효과 |
+| **Post-pruning** | 다 키운 뒤 잘라냄. 계산량이 크지만 보통 더 좋음 |
+| **Cost-complexity (`cp`)** | $R(T) + \alpha|T|$ 를 최소화하는 CART의 가지치기 |
+| **Surrogate split** | 1순위 feature가 결측일 때 대신 쓰는 대체 분할 |
+| **Axis-parallel boundary** | 한 축에 수직인 결정 경계. 대각선은 계단으로 근사 |
+| **Oblique tree** | $\sum w_i a_i \le t$ 로 분할하는 다변량 트리 |
+
+## ➕ References
+
+-   Quinlan JR. Induction of decision trees. *Machine Learning* 1986;1(1):81–106.
+-   Quinlan JR. *C4.5: Programs for Machine Learning*. Morgan Kaufmann, 1993.
+-   Breiman L, Friedman J, Olshen R, Stone C. *Classification and Regression Trees*. Wadsworth, 1984.
+-   Therneau TM, Atkinson EJ. *An Introduction to Recursive Partitioning Using the RPART Routines*. Mayo Foundation technical report, 2022.
+-   Hastie T, Tibshirani R, Friedman J. *The Elements of Statistical Learning*, 2nd ed. Springer, 2009. Ch. 9.2.
+-   Strobl C, Boulesteix AL, Augustin T. Unbiased split selection for classification trees based on the Gini index. *Computational Statistics & Data Analysis* 2007;52(1):483–501.
+-   Loh WY. Fifty years of classification and regression trees. *International Statistical Review* 2014;82(3):329–348.
+
+------------------------------------------------------------------------
+
+[← W6. 정규화 · LDA · 다중분류 · 불균형](06_regularization.qmd)

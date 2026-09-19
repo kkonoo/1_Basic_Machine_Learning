@@ -1,7 +1,7 @@
 ---
-title: "강의 사이트 제목"
-subtitle: "부제목"
-author: "교수자 이름"
+title: "Basic Machine Learning"
+subtitle: "연구자를 위한 기계학습 기초 — 개념부터 R·Python 실습까지"
+author: "Eunji Ha"
 date: today
 format:
   html:
@@ -9,20 +9,276 @@ format:
       text: |
         <meta name="ai-title" content="홈 - 강의 안내">
         <meta name="ai-context" content="
-        이 강의는 의사과학자를 위한 생명정보학 기초 과정입니다.
-        R을 이용한 RNA-seq 데이터 분석, 기초 통계, 데이터 시각화를 다룹니다.
-        총 13주 과정이며 매주 실습 위주로 진행됩니다.
+        이 강의는 생명과학·의학 연구자를 위한 기계학습(machine learning) 기초 과정입니다.
+        한 학기 15주 과정이며, 모든 실습은 R과 Python을 병기합니다.
+        신경망과 딥러닝은 이 과목에서 다루지 않고 별도 과목에서 다룹니다.
+        커리큘럼: W1 기본 용어와 inductive bias, W2 전처리와 feature engineering,
+        W3 검증 설계(hold-out, 교차검증, bootstrap, nested CV), W4 성능 척도와 모델 비교,
+        W5 선형회귀와 로지스틱회귀, W6 정규화(Ridge/Lasso)와 LDA·다중분류·class imbalance,
+        W7 decision tree, W8 중간 정리 실습, W9 ensemble(bagging, random forest, boosting),
+        W10 SVM과 kernel method, W11 Bayesian classifier, W12 clustering,
+        W13 dimension reduction(PCA, t-SNE, UMAP), W14 모델 해석과 보고(SHAP, TRIPOD+AI),
+        W15 프로젝트 발표.
+        과목 전체를 관통하는 세 가지 질문은 generalization(못 본 데이터에서도 성능이 유지되는가),
+        data leakage(평가에 쓰면 안 될 정보가 새어 들어갔는가),
+        inductive bias(이 알고리즘은 무엇을 가정하고 있는가)입니다.
         ">
 ---
 
-## Course Overview
+## 📖 강의 개요
 
-강의 소개 내용을 여기에 작성하세요.
+생명과학 데이터에 기계학습을 **제대로** 적용하기 위한 과정입니다.
+알고리즘을 많이 아는 것보다, **성능 숫자를 믿어도 되는지 판단하는 능력**을 기르는 데 초점을 둡니다.
 
-## Syllabus
+**이 강의에서 다루는 것**
 
-| Week | Topic |
-|------|-------|
-| W1 | Introduction & R Setup |
-| W2 | R Fundamentals |
-| ... | ... |
+-   ✅ 알고리즘이 무엇을 가정하고 있는지, 내 데이터에 그 가정이 맞는지
+-   ✅ 성능을 부풀리지 않고 정직하게 평가하는 설계
+-   ✅ R과 Python 양쪽에서 같은 분석을 굴려보는 실습
+-   ✅ 결과를 논문에 어떻게 쓰고 보고할 것인지
+
+**이 강의에서 다루지 않는 것**
+
+-   ❌ 신경망·딥러닝 (별도 과목에서 다룹니다)
+-   ❌ R·Python 문법 기초 (기본적인 데이터 조작은 할 줄 안다고 가정합니다)
+-   ❌ 특정 패키지 사용법 암기
+
+::: {.callout-important}
+## 이 과목을 관통하는 한 문장
+
+**"가지고 있는 데이터를 잘 맞히는 것은 아무 의미가 없다."**
+
+W3의 검증 설계, W6의 정규화, W7의 pruning, W9의 ensemble이 전부 같은 문제를 다른 각도에서 푸는 것입니다.
+:::
+
+## 🗓️ Syllabus
+
+::: {.callout-note collapse="true"}
+## W1 · Machine Learning이란 무엇인가
+
+> 데이터가 유한한데, 어떻게 규칙을 하나로 정할 수 있을까?
+
+-   🎯 기본 용어, hypothesis space와 version space
+-   🎯 Inductive bias, Occam's razor, No Free Lunch
+-   🧪 같은 데이터에 세 알고리즘 → 결정경계 비교
+-   ⚠️ 발현 행렬의 행·열이 ML 라이브러리 기대와 반대
+
+[W1 강의자료 →](chapters/01_intro.qmd)
+:::
+
+::: {.callout-note collapse="true"}
+## W2 · 데이터 준비와 Feature Engineering
+
+> 모델을 고르기 전에 끝내야 하는 일은 무엇인가?
+
+-   🎯 결측치 처리, scaling, categorical encoding
+-   🎯 Feature selection — filter / wrapper / embedded
+-   🎯 p ≫ n 오믹스 데이터의 특수성
+-   🧪 `recipes` ↔ `Pipeline` + `ColumnTransformer`
+-   ⚠️ **Data leakage** — 전처리를 fold 밖에서 하면 성능이 조용히 부풀려집니다
+:::
+
+::: {.callout-note collapse="true"}
+## W3 · 검증 설계
+
+> 이 숫자를 믿어도 되는가?
+
+-   🎯 Empirical error vs generalization error, overfitting
+-   🎯 Hold-out, k-fold CV, LOOCV, bootstrap(OOB)
+-   🎯 Nested CV — 튜닝과 평가의 분리
+-   🧪 학습곡선으로 over/underfitting 진단
+-   ⚠️ 환자·배치 단위 구조가 있으면 무작위 분할은 부정행위입니다
+:::
+
+::: {.callout-note collapse="true"}
+## W4 · 성능 척도와 모델 비교
+
+> 무엇을 잘한다고 말할 것인가?
+
+-   🎯 Confusion matrix, precision/recall, F1, ROC-AUC
+-   🎯 PR-AUC, calibration, Brier score
+-   🎯 모델 비교 검정 — paired t-test, McNemar, Friedman
+-   🎯 Bias-variance decomposition
+-   🧪 `yardstick` ↔ `sklearn.metrics`
+-   ⚠️ 불균형 데이터에서 ROC-AUC는 실제보다 후하게 나옵니다
+:::
+
+::: {.callout-note collapse="true"}
+## W5 · 선형회귀와 로지스틱회귀
+
+> 가장 단순한 모델이 왜 여전히 기준선인가?
+
+-   🎯 MSE, 최소제곱법, gradient descent
+-   🎯 Odds와 logit, 왜 MSE 대신 log loss인가
+-   🧪 gradient descent를 직접 구현해 `lm()` 계수와 대조
+-   ⚠️ 회귀 진단(잔차, 다중공선성)을 건너뛰면 해석이 무너집니다
+:::
+
+::: {.callout-note collapse="true"}
+## W6 · 정규화 · LDA · 다중분류 · 불균형
+
+> feature가 샘플보다 훨씬 많을 때는 무엇을 해야 하는가?
+
+-   🎯 Ridge, Lasso, Elastic Net — λ 선택과 coefficient path
+-   🎯 Fisher LDA — between/within-class 분산
+-   🎯 다중분류 — OvO, OvR, ECOC
+-   🎯 Class imbalance — SMOTE, threshold moving
+-   🧪 `glmnet` ↔ `ElasticNetCV`
+-   ⚠️ 재샘플링도 전처리입니다. training fold 안에서만
+:::
+
+::: {.callout-note collapse="true"}
+## W7 · Decision Tree
+
+> 사람이 읽을 수 있는 모델은 어디까지 가능한가?
+
+-   🎯 Entropy, Gini index, information gain
+-   🎯 Pre-pruning vs post-pruning
+-   🎯 연속형·결측치 처리, multivariate tree
+-   🧪 `rpart` ↔ `DecisionTreeClassifier`
+-   ⚠️ Full tree는 purity 100%이자 overfitting 100%입니다
+:::
+
+::: {.callout-note collapse="true"}
+## W8 · 중간 정리 실습
+
+> 여기까지를 하나의 파이프라인으로 묶을 수 있는가?
+
+-   🧪 데이터 하나를 골라 W2~W7 전 과정 수행
+-   🧪 전처리 → 분할 → 튜닝 → 평가를 하나의 워크플로로
+-   ⚠️ 이 시점에서 leakage가 없는지 서로 코드 리뷰
+:::
+
+::: {.callout-note collapse="true"}
+## W9 · Ensemble Learning
+
+> 약한 모델을 모으면 왜 강해지는가?
+
+-   🎯 Accuracy와 diversity, Hoeffding 부등식
+-   🎯 Bagging, OOB, Random Forest
+-   🎯 Boosting — AdaBoost, gradient boosting, XGBoost/LightGBM
+-   🎯 Combining strategy와 stacking
+-   🧪 `ranger`·`xgboost` ↔ `RandomForestClassifier`·`XGBClassifier`
+-   ⚠️ 표 형태 데이터에서 딥러닝보다 강한 경우가 대부분입니다
+:::
+
+::: {.callout-note collapse="true"}
+## W10 · SVM과 Kernel Method
+
+> 직선으로 못 가르는 데이터는 어떻게 가르는가?
+
+-   🎯 Maximum margin과 support vector
+-   🎯 Soft margin과 C, hinge loss
+-   🎯 Kernel trick — linear / polynomial / RBF
+-   🧪 `kernlab` ↔ `SVC`, C·γ에 따른 결정경계 변화
+-   ⚠️ 스케일링을 안 하면 커널이 망가집니다
+:::
+
+::: {.callout-note collapse="true"}
+## W11 · Bayesian Classifier
+
+> 사전 지식을 모델에 어떻게 넣는가?
+
+-   🎯 Prior, likelihood, posterior, Bayes optimal classifier
+-   🎯 MLE vs MAP — 그리고 **MAP = 정규화**라는 연결
+-   🎯 Naïve Bayes, Laplace smoothing, semi-naïve(AODE)
+-   🎯 Bayesian network
+-   🧪 `naiveBayes` ↔ `GaussianNB`
+-   ⚠️ "naïve" 가정이 깨져도 잘 되는 이유와 안 되는 경우
+:::
+
+::: {.callout-note collapse="true"}
+## W12 · Clustering
+
+> 정답이 없을 때 결과가 옳은지 어떻게 아는가?
+
+-   🎯 Validity index — 외부(ARI, FMI) / 내부(silhouette, DB)
+-   🎯 거리 계산법과 그 선택이 만드는 차이
+-   🎯 k-means, DBSCAN, hierarchical(AGNES), Louvain/Leiden
+-   🧪 `factoextra`·`dbscan` ↔ `sklearn.cluster`
+-   ⚠️ k를 바꾸면 항상 다른 답이 나옵니다. "안정성"을 함께 보고해야 합니다
+:::
+
+::: {.callout-note collapse="true"}
+## W13 · Dimension Reduction
+
+> 20,000차원을 2차원으로 줄이면 무엇이 사라지는가?
+
+-   🎯 Curse of dimensionality, kNN
+-   🎯 PCA — eigen decomposition, scree plot, PCA vs LDA
+-   🎯 Kernel PCA, manifold learning
+-   🎯 t-SNE, UMAP, NMF
+-   🧪 같은 데이터에 PCA / t-SNE / UMAP을 나란히
+-   ⚠️ t-SNE·UMAP에서 **점 사이 거리와 군집 크기는 해석하면 안 됩니다**
+:::
+
+::: {.callout-note collapse="true"}
+## W14 · 모델 해석과 보고
+
+> 이 결과를 논문에 어떻게 쓸 것인가?
+
+-   🎯 Variable importance — impurity vs permutation
+-   🎯 PDP, ICE, SHAP
+-   🎯 보고 지침 — TRIPOD+AI, 외부 검증, 코드·시드 공개
+-   🧪 `vip`·`DALEX` ↔ `shap`
+-   ⚠️ 상관된 feature가 있으면 importance는 나뉘어 작아집니다
+:::
+
+::: {.callout-note collapse="true"}
+## W15 · 프로젝트 발표
+
+> 내 데이터로 처음부터 끝까지 해냈는가?
+
+-   🧪 데이터 선정부터 해석까지 전 과정 수행
+-   🧪 제출물: 재현 가능한 `.qmd` + 렌더링된 리포트
+-   ⚠️ 평가 기준은 최종 성능 수치가 아니라 **검증 설계의 타당성**입니다
+:::
+
+## 🧵 매주 반복되는 세 가지 질문
+
+어떤 알고리즘을 배우든, 이 세 가지는 계속 돌아옵니다.
+
+| Generalization | Data leakage | Inductive bias |
+|----------------|--------------|----------------|
+| 이 성능이 **못 본 데이터**에서도 유지되는가? | 평가에 쓰면 안 될 정보가 **새어 들어갔는가**? | 이 알고리즘은 **무엇을 가정**하고 있는가? |
+| training error가 아니라 generalization error를 본다 | 전처리·feature selection·재샘플링은 모두 fold 안에서 | 가정 없는 학습은 없다. 명시적이지 않을 뿐 |
+| W3, W4 | W2, W3, W8 | W1, W7, W10 |
+
+## 🧭 각 챕터를 읽는 법
+
+모든 챕터는 같은 순서로 구성되어 있습니다.
+
+```
+개념과 동기       — 왜 이 방법이 필요한가
+    ↓
+용어와 수식       — 최소한으로, 직관 중심으로
+    ↓
+실습 (R / Python) — 탭으로 나란히
+    ↓
+직접 해보기       — 값을 바꿔보며 확인
+    ↓
+정리 + 다음 시간 예고
+```
+
+::: {.callout-tip}
+## R과 Python을 함께 보는 이유
+
+같은 분석을 두 언어로 보면 **라이브러리 문법과 방법론의 본질이 분리되어 보입니다.**
+본인이 쓰는 언어 하나만 따라가도 되지만, 반대쪽 탭을 한 번씩 열어보길 권합니다.
+
+이 사이트에서 R 코드는 실행 결과까지 함께 출력되고, Python 코드는 대조용으로 표시됩니다.
+:::
+
+::: {.callout-tip}
+## 챕터 사이의 연결
+
+처음 배운 개념이 뒤에서 다른 이름으로 다시 나옵니다. 그때마다 표시해 두었습니다.
+
+-   W1 inductive bias → W6 정규화 → W11 prior (같은 이야기의 세 가지 얼굴)
+-   W1 kernel 실습 힌트 → W10 kernel trick → W13 kernel PCA
+-   W3 bias-variance → W7 pruning → W9 ensemble
+:::
+
+------------------------------------------------------------------------
+
+[W1. Machine Learning이란 무엇인가 →](chapters/01_intro.qmd)

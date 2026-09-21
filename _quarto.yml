@@ -87,7 +87,7 @@ knitr:
     python.reticulate: false
 
 execute:
-  freeze: auto          # 코드 실행 결과 캐시 (빠른 빌드)
+  freeze: true          # 코드 실행 결과 캐시 (빠른 빌드)
   echo: true
   eval: false
   warning: false

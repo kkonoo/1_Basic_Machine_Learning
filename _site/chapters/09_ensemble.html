@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Eunji Ha">
+<meta name="dcterms.date" content="2026-09-21">
+<meta name="description" content="Bagging, random forest, boosting, stacking — 그리고 diversity">
+
+<title>W9. Ensemble Learning – 1. Basic Machine Learning</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../images/logo.ico" rel="icon">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-234273d1456647dabc34a594ac50e507.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-b7acaf8b0572301ab572ffd94e5b5c34.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<meta name="ai-title" content="W9. Ensemble Learning">
+<meta name="ai-context" content="
+이 챕터는 앙상블 학습을 다룹니다.
+여러 학습기를 만들어 결합하며, base learner가 같은 종류면 homogeneous,
+다른 종류면 heterogeneous입니다.
+개별 학습기의 오차가 독립이면 다수결 오차는 Hoeffding 부등식에 따라
+학습기 수 T에 대해 지수적으로 줄어듭니다. 실습에서 개별 오차 0.4인 학습기를
+독립으로 51개 모으면 오차가 0.074로 떨어지지만,
+상관 0.3이면 0.329, 상관 0.6이면 0.376에서 멈춥니다.
+같은 데이터로 학습하므로 독립은 불가능하고, 그래서 accuracy와 diversity의
+상충을 관리하는 것이 앙상블의 전부입니다.
+bagging은 bootstrap으로 데이터를 흔들어 variance를 줄입니다.
+실습에서 단일 트리 0.782가 트리 100개 bagging으로 0.828이 되고,
+bootstrap에서 빠지는 약 36.8퍼센트(1/e)의 샘플로 OOB 오차를 계산해
+별도 validation set 없이 0.810을 얻습니다.
+random forest는 여기에 feature sampling을 더합니다. mtry를 2에서 12까지 늘리면
+개별 트리 정확도는 0.546에서 0.725로 오르지만 트리 사이 불일치도는
+0.486에서 0.292로 떨어지고, 앙상블 정확도는 중간인 mtry 8에서 0.843으로 최대가 됩니다.
+이것이 accuracy-diversity 상충의 실증입니다.
+다만 rpart로는 split마다 feature를 뽑을 수 없어 tree마다 뽑는 random subspace로
+근사했습니다. 진짜 random forest는 split마다 뽑습니다.
+boosting은 순차적으로 이전 학습기가 틀린 샘플에 weight를 주며 bias를 줄입니다.
+AdaBoost 실습에서 depth 1 stump는 train 0.868 test 0.802,
+depth 2는 train 0.948 test 0.818, depth 3은 train 1.0인데 test는 0.818로
+더 나아지지 않습니다. base learner가 약할수록 boosting이 잘 듣습니다.
+gradient boosting은 잔차를 순차적으로 적합하며 learning rate eta로 조절합니다.
+eta 1.0은 M=10에서 test RMSE 0.386으로 최저였다가 M=300에서 0.459로 나빠지고,
+eta 0.1은 M=300에서 0.346으로 안정적입니다.
+stacking은 base learner들의 out-of-fold 예측을 meta learner의 입력으로 씁니다.
+실습에서 로지스틱 0.850, 트리 0.782, kNN 0.785인데 단순 평균은 0.843,
+stacking은 0.845이고 meta 계수는 glm 5.04, tree 0.50, knn 0.48로
+가장 잘 맞는 학습기에 가중치를 몰아줍니다.
+이 데이터의 진짜 경계가 선형이라 로지스틱 하나가 앙상블보다 나았다는 점이 중요합니다.
+앙상블은 만능이 아닙니다.
+">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../assets/html.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">1. Basic Machine Learning</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/kkonoo/1_Basic_Machine_Learning"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/09_ensemble.html">W9. Ensemble Learning</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Home</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Part 1. 기초</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/01_intro.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W1. Machine Learning이란 무엇인가</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/02_preprocessing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W2. 데이터 준비와 Feature Engineering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/03_validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W3. 검증 설계</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/04_metrics.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W4. 성능 척도와 모델 비교</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/05_linear_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W5. 선형회귀와 로지스틱회귀</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/06_regularization.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W6. 정규화 · LDA · 다중분류 · 불균형</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/07_decision_tree.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W7. Decision Tree</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/09_ensemble.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">W9. Ensemble Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/10_svm.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W10. SVM과 Kernel Methods</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/11_bayes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W11. Bayesian Classifier</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/12_clustering.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W12. Clustering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/13_dimension_reduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W13. Dimension Reduction</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/14_interpretation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W14. 모델 해석과 보고</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Contents</h2>
+   
+  <ul>
+  <li><a href="#여러-개를-모으면-왜-나아지는가" id="toc-여러-개를-모으면-왜-나아지는가" class="nav-link active" data-scroll-target="#여러-개를-모으면-왜-나아지는가">1. 여러 개를 모으면 왜 나아지는가 🗳️</a>
+  <ul>
+  <li><a href="#용어" id="toc-용어" class="nav-link" data-scroll-target="#용어">1) 용어</a></li>
+  <li><a href="#오차-상한-hoeffding-부등식" id="toc-오차-상한-hoeffding-부등식" class="nav-link" data-scroll-target="#오차-상한-hoeffding-부등식">2) 오차 상한 — Hoeffding 부등식</a></li>
+  <li><a href="#실습-독립이라는-가정이-전부다" id="toc-실습-독립이라는-가정이-전부다" class="nav-link" data-scroll-target="#실습-독립이라는-가정이-전부다">3) 🧪 실습: ’독립’이라는 가정이 전부다</a></li>
+  <li><a href="#그런데-독립은-불가능하다" id="toc-그런데-독립은-불가능하다" class="nav-link" data-scroll-target="#그런데-독립은-불가능하다">4) 그런데 독립은 불가능하다</a></li>
+  <li><a href="#학습기-생성-방식" id="toc-학습기-생성-방식" class="nav-link" data-scroll-target="#학습기-생성-방식">5) 학습기 생성 방식</a></li>
+  </ul></li>
+  <li><a href="#bagging" id="toc-bagging" class="nav-link" data-scroll-target="#bagging">2. Bagging 🎲</a>
+  <ul>
+  <li><a href="#bootstrap-aggregating" id="toc-bootstrap-aggregating" class="nav-link" data-scroll-target="#bootstrap-aggregating">1) Bootstrap aggregating</a></li>
+  <li><a href="#oob-out-of-bag" id="toc-oob-out-of-bag" class="nav-link" data-scroll-target="#oob-out-of-bag">2) OOB (out-of-bag)</a></li>
+  <li><a href="#실습-bagging을-직접-구현한다" id="toc-실습-bagging을-직접-구현한다" class="nav-link" data-scroll-target="#실습-bagging을-직접-구현한다">3) 🧪 실습: bagging을 직접 구현한다</a></li>
+  </ul></li>
+  <li><a href="#random-forest" id="toc-random-forest" class="nav-link" data-scroll-target="#random-forest">3. Random Forest 🌲🌲</a>
+  <ul>
+  <li><a href="#데이터만이-아니라-feature도-흔든다" id="toc-데이터만이-아니라-feature도-흔든다" class="nav-link" data-scroll-target="#데이터만이-아니라-feature도-흔든다">1) 데이터만이 아니라 feature도 흔든다</a></li>
+  <li><a href="#실습-mtry를-바꾸면-무슨-일이-일어나는가" id="toc-실습-mtry를-바꾸면-무슨-일이-일어나는가" class="nav-link" data-scroll-target="#실습-mtry를-바꾸면-무슨-일이-일어나는가">2) 🧪 실습: mtry를 바꾸면 무슨 일이 일어나는가</a></li>
+  </ul></li>
+  <li><a href="#boosting" id="toc-boosting" class="nav-link" data-scroll-target="#boosting">4. Boosting 🔁</a>
+  <ul>
+  <li><a href="#아이디어" id="toc-아이디어" class="nav-link" data-scroll-target="#아이디어">1) 아이디어</a></li>
+  <li><a href="#adaboost" id="toc-adaboost" class="nav-link" data-scroll-target="#adaboost">2) AdaBoost</a></li>
+  <li><a href="#실습-adaboost를-직접-구현한다" id="toc-실습-adaboost를-직접-구현한다" class="nav-link" data-scroll-target="#실습-adaboost를-직접-구현한다">3) 🧪 실습: AdaBoost를 직접 구현한다</a></li>
+  <li><a href="#gradient-boosting-잔차를-적합한다" id="toc-gradient-boosting-잔차를-적합한다" class="nav-link" data-scroll-target="#gradient-boosting-잔차를-적합한다">4) Gradient boosting — 잔차를 적합한다</a></li>
+  <li><a href="#실습-shrinkage가-하는-일" id="toc-실습-shrinkage가-하는-일" class="nav-link" data-scroll-target="#실습-shrinkage가-하는-일">5) 🧪 실습: shrinkage가 하는 일</a></li>
+  <li><a href="#xgboost-lightgbm" id="toc-xgboost-lightgbm" class="nav-link" data-scroll-target="#xgboost-lightgbm">6) XGBoost / LightGBM</a></li>
+  </ul></li>
+  <li><a href="#combining-strategy" id="toc-combining-strategy" class="nav-link" data-scroll-target="#combining-strategy">5. Combining strategy 🧩</a>
+  <ul>
+  <li><a href="#averaging-회귀" id="toc-averaging-회귀" class="nav-link" data-scroll-target="#averaging-회귀">1) Averaging (회귀)</a></li>
+  <li><a href="#voting-분류" id="toc-voting-분류" class="nav-link" data-scroll-target="#voting-분류">2) Voting (분류)</a></li>
+  <li><a href="#stacking" id="toc-stacking" class="nav-link" data-scroll-target="#stacking">3) Stacking</a></li>
+  <li><a href="#실습-stacking" id="toc-실습-stacking" class="nav-link" data-scroll-target="#실습-stacking">4) 🧪 실습: stacking</a></li>
+  </ul></li>
+  <li><a href="#diversity" id="toc-diversity" class="nav-link" data-scroll-target="#diversity">6. Diversity 🎨</a>
+  <ul>
+  <li><a href="#error-ambiguity-decomposition" id="toc-error-ambiguity-decomposition" class="nav-link" data-scroll-target="#error-ambiguity-decomposition">1) Error-ambiguity decomposition</a></li>
+  <li><a href="#diversity-측정" id="toc-diversity-측정" class="nav-link" data-scroll-target="#diversity-측정">2) Diversity 측정</a></li>
+  <li><a href="#diversity를-만드는-네-가지-교란" id="toc-diversity를-만드는-네-가지-교란" class="nav-link" data-scroll-target="#diversity를-만드는-네-가지-교란">3) Diversity를 만드는 네 가지 교란</a></li>
+  </ul></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">📝 Summary</a></li>
+  <li><a href="#key-terms" id="toc-key-terms" class="nav-link" data-scroll-target="#key-terms">🔑 Key terms</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">➕ References</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content column-body" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/09_ensemble.html">W9. Ensemble Learning</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">W9. Ensemble Learning</h1>
+</div>
+
+<div>
+  <div class="description">
+    Bagging, random forest, boosting, stacking — 그리고 diversity
+  </div>
+</div>
+
+
+<div class="quarto-title-meta column-body">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Eunji Ha </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 21, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+🎯 Learning objectives
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>앙상블이 오차를 줄이는 조건(독립성)을 Hoeffding 부등식으로 설명할 수 있다</li>
+<li><strong>accuracy와 diversity가 상충한다는 것을 수치로 보일 수 있다</strong></li>
+<li>bagging과 boosting의 차이를 variance/bias 관점에서 설명할 수 있다</li>
+<li><strong>OOB 오차가 무엇이고 왜 별도 validation set을 대신할 수 있는지 설명할 수 있다</strong></li>
+<li>AdaBoost와 gradient boosting의 갱신 규칙을 쓰고 직접 구현할 수 있다</li>
+<li><strong>averaging / voting / stacking을 구분하고 stacking의 누수 위험을 피할 수 있다</strong></li>
+</ul>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>🤔 <strong>정확도 60%짜리 모델 100개를 모으면 정확도 99%가 될까? 된다면 왜 아무도 그렇게 안 할까?</strong></p>
+</blockquote>
+<hr>
+<section id="여러-개를-모으면-왜-나아지는가" class="level2">
+<h2 class="anchored" data-anchor-id="여러-개를-모으면-왜-나아지는가">1. 여러 개를 모으면 왜 나아지는가 🗳️</h2>
+<section id="용어" class="level3">
+<h3 class="anchored" data-anchor-id="용어">1) 용어</h3>
+<ul>
+<li><strong>Ensemble learning</strong> (= multi-classifier system, committee-based learning) — 같은 문제에 대해 학습기를 여러 개 만들어 <strong>결합</strong></li>
+<li><strong>Individual learner</strong> — 알고리즘 하나로 만든 학습기 하나</li>
+<li><strong>Homogeneous</strong> — 개별 학습기가 모두 같은 종류. 이때 개별 학습기를 <strong>base learner</strong>라 부름 (트리 100개)</li>
+<li><strong>Heterogeneous</strong> — 종류가 섞여 있음. 이때는 <strong>component learner</strong> (트리 + 로지스틱 + kNN)</li>
+</ul>
+</section>
+<section id="오차-상한-hoeffding-부등식" class="level3">
+<h3 class="anchored" data-anchor-id="오차-상한-hoeffding-부등식">2) 오차 상한 — Hoeffding 부등식</h3>
+<p>개별 학습기의 오차율이 <span class="math inline">\(\epsilon\)</span> 이고 <strong>서로 독립</strong>이라면, <span class="math inline">\(T\)</span> 개를 다수결로 모았을 때 앙상블이 틀릴 확률은</p>
+<p><span class="math display">\[P(H(\mathbf{x}) \neq f(\mathbf{x})) = \sum_{k=0}^{\lfloor T/2 \rfloor} \binom{T}{k}(1-\epsilon)^k \epsilon^{T-k}
+\;\le\; \exp\!\left(-\tfrac{1}{2}T(1-2\epsilon)^2\right)\]</span></p>
+<ul>
+<li><span class="math inline">\(\epsilon &lt; 0.5\)</span> 이기만 하면 <strong><span class="math inline">\(T\)</span> 가 커질수록 오차가 지수적으로 0에 수렴</strong></li>
+<li>“약한 학습기를 모아 강한 학습기를 만든다”는 주장의 근거</li>
+</ul>
+</section>
+<section id="실습-독립이라는-가정이-전부다" class="level3">
+<h3 class="anchored" data-anchor-id="실습-독립이라는-가정이-전부다">3) 🧪 실습: ’독립’이라는 가정이 전부다</h3>
+<p>개별 오차 <span class="math inline">\(\epsilon = 0.4\)</span> 인 학습기를 <span class="math inline">\(T\)</span> 개 모읍니다. 독립일 때, 그리고 오차가 서로 상관(<span class="math inline">\(\rho\)</span>)될 때를 비교합니다.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>Ts <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">1</span>, <span class="dv">51</span>, <span class="at">by =</span> <span class="dv">2</span>); eps <span class="ot">&lt;-</span> <span class="fl">0.4</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 독립일 때: 다수결이 틀릴 확률 = Binomial 꼬리확률</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>indep <span class="ot">&lt;-</span> <span class="fu">pbinom</span>(<span class="fu">floor</span>(Ts <span class="sc">/</span> <span class="dv">2</span>), Ts, <span class="dv">1</span> <span class="sc">-</span> eps)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>bound <span class="ot">&lt;-</span> <span class="fu">exp</span>(<span class="sc">-</span><span class="fl">0.5</span> <span class="sc">*</span> Ts <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">-</span> <span class="dv">2</span> <span class="sc">*</span> eps)<span class="sc">^</span><span class="dv">2</span>)          <span class="co"># Hoeffding 상한</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 상관이 있을 때: 공통 성분 u를 공유하는 잠재변수로 모의실험</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>sim_rho <span class="ot">&lt;-</span> <span class="cf">function</span>(T_, eps, rho, <span class="at">R =</span> <span class="dv">20000</span>, <span class="at">seed =</span> <span class="dv">1</span>) {</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed); thr <span class="ot">&lt;-</span> <span class="fu">qnorm</span>(eps)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  u   <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(R), R, T_)                    <span class="co"># 모든 학습기가 공유하는 오차</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  lat <span class="ot">&lt;-</span> <span class="fu">sqrt</span>(rho) <span class="sc">*</span> u <span class="sc">+</span> <span class="fu">sqrt</span>(<span class="dv">1</span> <span class="sc">-</span> rho) <span class="sc">*</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(R <span class="sc">*</span> T_), R, T_)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mean</span>(<span class="fu">rowSums</span>(lat <span class="sc">&lt;</span> thr) <span class="sc">&gt;</span> T_ <span class="sc">/</span> <span class="dv">2</span>)                 <span class="co"># 과반이 틀린 비율</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>lvl <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"Independent (rho = 0)"</span>, <span class="st">"Correlated (rho = 0.3)"</span>,</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>         <span class="st">"Correlated (rho = 0.6)"</span>, <span class="st">"Hoeffding bound"</span>)</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>curves <span class="ot">&lt;-</span> <span class="fu">rbind</span>(</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">T =</span> Ts, <span class="at">error =</span> indep,                         <span class="at">kind =</span> lvl[<span class="dv">1</span>]),</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">T =</span> Ts, <span class="at">error =</span> <span class="fu">sapply</span>(Ts, sim_rho, eps, <span class="fl">0.3</span>), <span class="at">kind =</span> lvl[<span class="dv">2</span>]),</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">T =</span> Ts, <span class="at">error =</span> <span class="fu">sapply</span>(Ts, sim_rho, eps, <span class="fl">0.6</span>), <span class="at">kind =</span> lvl[<span class="dv">3</span>]),</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">T =</span> Ts, <span class="at">error =</span> bound,                         <span class="at">kind =</span> lvl[<span class="dv">4</span>])</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>curves<span class="sc">$</span>kind <span class="ot">&lt;-</span> <span class="fu">factor</span>(curves<span class="sc">$</span>kind, <span class="at">levels =</span> lvl)</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(curves, <span class="fu">aes</span>(T, error, <span class="at">colour =</span> kind, <span class="at">linetype =</span> kind)) <span class="sc">+</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">9</span>) <span class="sc">+</span></span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values  =</span> <span class="fu">setNames</span>(<span class="fu">c</span>(<span class="st">"#2e8b7a"</span>, <span class="st">"#d1495b"</span>, <span class="st">"#d1495b"</span>, <span class="st">"#7d8597"</span>), lvl)) <span class="sc">+</span></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_linetype_manual</span>(<span class="at">values =</span> <span class="fu">setNames</span>(<span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">3</span>, <span class="dv">2</span>), lvl)) <span class="sc">+</span></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Number of learners (T)"</span>, <span class="at">y =</span> <span class="st">"Ensemble error"</span>,</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>       <span class="at">colour =</span> <span class="cn">NULL</span>, <span class="at">linetype =</span> <span class="cn">NULL</span>,</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"individual error = 0.4 in every case"</span>) <span class="sc">+</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="09_ensemble_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid figure-img" width="624"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><strong>독립이면</strong> <span class="math inline">\(T = 51\)</span> 에서 오차 0.4 → <strong>0.074</strong>. 이론이 말하는 그대로입니다</li>
+<li><strong><span class="math inline">\(\rho = 0.3\)</span></strong> 이면 0.329에서 멈춥니다. <strong><span class="math inline">\(\rho = 0.6\)</span></strong> 이면 0.376 — 거의 개선이 없습니다</li>
+<li>학습기를 아무리 늘려도 <strong>상관이 있으면 바닥이 생깁니다</strong></li>
+</ul>
+</section>
+<section id="그런데-독립은-불가능하다" class="level3">
+<h3 class="anchored" data-anchor-id="그런데-독립은-불가능하다">4) 그런데 독립은 불가능하다</h3>
+<ul>
+<li>개별 학습기는 <strong>같은 training set</strong>으로 학습합니다. 독립일 수가 없습니다</li>
+<li>게다가 <strong>accuracy와 diversity는 상충</strong>합니다 — 모두 정확하려면 모두 진짜 함수에 가까워야 하고, 그러면 서로 닮습니다</li>
+<li>그래서 앙상블의 기술은 전부 <strong>“정확도를 크게 잃지 않으면서 어떻게 서로 다르게 만들까”</strong> 입니다</li>
+</ul>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+원자료 노트의 한 줄
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<blockquote class="blockquote">
+<p>일반적으로 generalization ↑ (<strong>but 아주 좋은 single learner = best</strong>)</p>
+</blockquote>
+<p>이 챕터의 실습 데이터가 정확히 그 경우입니다. 진짜 경계가 선형이라 <strong>로지스틱 회귀 하나(0.850)가 트리 앙상블 전부(0.828~0.843)보다 낫습니다.</strong> 앙상블은 공짜 성능이 아니라, 알맞은 단일 모델을 찾기 어려울 때 쓰는 보험입니다.</p>
+</div>
+</div>
+</section>
+<section id="학습기-생성-방식" class="level3">
+<h3 class="anchored" data-anchor-id="학습기-생성-방식">5) 학습기 생성 방식</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th></th>
+<th><strong>Serialization (순차)</strong></th>
+<th><strong>Parallel (병렬)</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>의존 관계</td>
+<td>앞 학습기에 <strong>강하게 의존</strong></td>
+<td>거의 독립적으로 생성</td>
+</tr>
+<tr class="even">
+<td>생성 순서</td>
+<td>하나씩 순서대로</td>
+<td>동시에 가능</td>
+</tr>
+<tr class="odd">
+<td>주로 줄이는 것</td>
+<td><strong>Bias</strong></td>
+<td><strong>Variance</strong></td>
+</tr>
+<tr class="even">
+<td>base learner</td>
+<td>약한 학습기(얕은 트리)</td>
+<td>강한 학습기(깊은 트리)</td>
+</tr>
+<tr class="odd">
+<td>대표</td>
+<td><strong>Boosting</strong> (AdaBoost, GBM)</td>
+<td><strong>Bagging</strong>, Random forest</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="bagging" class="level2">
+<h2 class="anchored" data-anchor-id="bagging">2. Bagging 🎲</h2>
+<section id="bootstrap-aggregating" class="level3">
+<h3 class="anchored" data-anchor-id="bootstrap-aggregating">1) Bootstrap aggregating</h3>
+<ul>
+<li>training data <span class="math inline">\(N\)</span> 개에서 <strong>복원추출로 <span class="math inline">\(N\)</span> 개</strong>를 뽑아 부트스트랩 표본을 만듦</li>
+<li>이걸 <span class="math inline">\(B\)</span> 번 반복해 학습기 <span class="math inline">\(B\)</span> 개를 만들고</li>
+</ul>
+<p><span class="math display">\[s_L(\cdot) = \frac{1}{B}\sum_{b=1}^{B} w_b(\cdot) \quad \text{(회귀: 평균)}, \qquad
+s_L(\cdot) = \arg\max_k\,\mathrm{card}\{b \mid w_b(\cdot) = k\} \quad \text{(분류: 다수결)}\]</span></p>
+<ul>
+<li>각 표본이 원래 분포를 유지하면서 <strong>조금씩 다르므로</strong> 학습기들이 달라짐</li>
+<li>평균/투표가 <strong>variance를 줄임</strong>. 그래서 base learner는 <strong>깊은 트리</strong>(저bias 고variance)를 씁니다</li>
+</ul>
+</section>
+<section id="oob-out-of-bag" class="level3">
+<h3 class="anchored" data-anchor-id="oob-out-of-bag">2) OOB (out-of-bag)</h3>
+<ul>
+<li>복원추출이라 어떤 샘플은 한 번도 안 뽑힙니다. 안 뽑힐 확률은</li>
+</ul>
+<p><span class="math display">\[\left(1 - \frac{1}{N}\right)^N \xrightarrow[N \to \infty]{} \frac{1}{e} \approx 0.368\]</span></p>
+<ul>
+<li>각 샘플을 <strong>그 샘플을 안 본 트리들</strong>만으로 예측하면 <strong>공짜 validation</strong>이 생깁니다</li>
+<li>별도 hold-out 없이 generalization error를 추정할 수 있다는 것이 bagging의 큰 실무적 장점</li>
+</ul>
+</section>
+<section id="실습-bagging을-직접-구현한다" class="level3">
+<h3 class="anchored" data-anchor-id="실습-bagging을-직접-구현한다">3) 🧪 실습: bagging을 직접 구현한다</h3>
+<ul>
+<li>feature 12개 중 <code>x1</code>~<code>x4</code>만 진짜 신호(<code>x1</code>이 가장 강함), <code>z1</code>~<code>z8</code>은 노이즈</li>
+<li>환자 1200명 중 800명 학습</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(rpart)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">1200</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>X <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n <span class="sc">*</span> <span class="dv">12</span>), n)</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(X) <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fu">paste0</span>(<span class="st">"x"</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">4</span>), <span class="fu">paste0</span>(<span class="st">"z"</span>, <span class="dv">1</span><span class="sc">:</span><span class="dv">8</span>))</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>lp  <span class="ot">&lt;-</span> <span class="fl">2.2</span><span class="sc">*</span>X[,<span class="dv">1</span>] <span class="sc">+</span> <span class="fl">1.1</span><span class="sc">*</span>X[,<span class="dv">2</span>] <span class="sc">+</span> <span class="fl">1.0</span><span class="sc">*</span>X[,<span class="dv">3</span>] <span class="sc">+</span> <span class="fl">0.9</span><span class="sc">*</span>X[,<span class="dv">4</span>]</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>dat <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(X)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>dat<span class="sc">$</span>y <span class="ot">&lt;-</span> <span class="fu">factor</span>(<span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(lp)), <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"A"</span>, <span class="st">"B"</span>))</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">3</span>)</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>ti <span class="ot">&lt;-</span> <span class="fu">sample</span>(n, <span class="dv">800</span>); tr <span class="ot">&lt;-</span> dat[ti, ]; te <span class="ot">&lt;-</span> dat[<span class="sc">-</span>ti, ]</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>fe <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">names</span>(dat), <span class="st">"y"</span>)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>fm <span class="ot">&lt;-</span> <span class="fu">as.formula</span>(<span class="fu">paste</span>(<span class="st">"y ~"</span>, <span class="fu">paste</span>(fe, <span class="at">collapse =</span> <span class="st">" + "</span>)))</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>ctrl <span class="ot">&lt;-</span> <span class="fu">rpart.control</span>(<span class="at">cp =</span> <span class="dv">0</span>, <span class="at">minsplit =</span> <span class="dv">10</span>, <span class="at">minbucket =</span> <span class="dv">5</span>, <span class="at">xval =</span> <span class="dv">0</span>)  <span class="co"># 깊게 키운다</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># mtry = NULL 이면 bagging, 숫자를 주면 feature도 뽑는다 (3절)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>bag_fit <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">B =</span> <span class="dv">100</span>, <span class="at">mtry =</span> <span class="cn">NULL</span>, <span class="at">seed =</span> <span class="dv">1</span>) {</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed); N <span class="ot">&lt;-</span> <span class="fu">nrow</span>(tr)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  trees <span class="ot">&lt;-</span> <span class="fu">vector</span>(<span class="st">"list"</span>, B); oob <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA_character_</span>, N, B)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (b <span class="cf">in</span> <span class="fu">seq_len</span>(B)) {</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    ib <span class="ot">&lt;-</span> <span class="fu">sample</span>(N, N, <span class="at">replace =</span> <span class="cn">TRUE</span>)                       <span class="co"># 부트스트랩</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    f  <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">is.null</span>(mtry)) fe <span class="cf">else</span> <span class="fu">sample</span>(fe, mtry)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    m  <span class="ot">&lt;-</span> <span class="fu">rpart</span>(<span class="fu">as.formula</span>(<span class="fu">paste</span>(<span class="st">"y ~"</span>, <span class="fu">paste</span>(f, <span class="at">collapse =</span> <span class="st">" + "</span>))),</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>                <span class="at">data =</span> tr[ib, ], <span class="at">method =</span> <span class="st">"class"</span>, <span class="at">control =</span> ctrl)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    trees[[b]] <span class="ot">&lt;-</span> m</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    o <span class="ot">&lt;-</span> <span class="fu">setdiff</span>(<span class="fu">seq_len</span>(N), <span class="fu">unique</span>(ib))                     <span class="co"># 이 트리의 OOB 샘플</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    oob[o, b] <span class="ot">&lt;-</span> <span class="fu">as.character</span>(<span class="fu">predict</span>(m, tr[o, ], <span class="at">type =</span> <span class="st">"class"</span>))</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">trees =</span> trees, <span class="at">oob =</span> oob)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>vote <span class="ot">&lt;-</span> <span class="cf">function</span>(M) <span class="fu">apply</span>(M, <span class="dv">1</span>, <span class="cf">function</span>(v) {</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a>  v <span class="ot">&lt;-</span> v[<span class="sc">!</span><span class="fu">is.na</span>(v)]</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">length</span>(v)) <span class="cn">NA_character_</span> <span class="cf">else</span> <span class="fu">names</span>(<span class="fu">sort</span>(<span class="fu">table</span>(v), <span class="at">decreasing =</span> <span class="cn">TRUE</span>))[<span class="dv">1</span>]</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>ens_pred <span class="ot">&lt;-</span> <span class="cf">function</span>(m, nd)</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">vote</span>(<span class="fu">sapply</span>(m<span class="sc">$</span>trees, <span class="cf">function</span>(t) <span class="fu">as.character</span>(<span class="fu">predict</span>(t, nd, <span class="at">type =</span> <span class="st">"class"</span>))))</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>bag <span class="ot">&lt;-</span> <span class="fu">bag_fit</span>(<span class="at">B =</span> <span class="dv">100</span>)</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>single <span class="ot">&lt;-</span> <span class="fu">rpart</span>(fm, <span class="at">data =</span> tr, <span class="at">method =</span> <span class="st">"class"</span>)</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">model    =</span> <span class="fu">c</span>(<span class="st">"Single tree"</span>, <span class="st">"Bagging (B = 100)"</span>),</span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>  <span class="at">test_acc =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">mean</span>(<span class="fu">predict</span>(single, te, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">==</span> te<span class="sc">$</span>y),</span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>                     <span class="fu">mean</span>(<span class="fu">ens_pred</span>(bag, te) <span class="sc">==</span> te<span class="sc">$</span>y)), <span class="dv">3</span>),</span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>  <span class="at">oob_acc  =</span> <span class="fu">c</span>(<span class="st">"-"</span>, <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, <span class="fu">mean</span>(<span class="fu">vote</span>(bag<span class="sc">$</span>oob) <span class="sc">==</span> tr<span class="sc">$</span>y))),</span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>  <span class="at">oob_frac =</span> <span class="fu">c</span>(<span class="st">"-"</span>, <span class="fu">sprintf</span>(<span class="st">"%.3f"</span>, <span class="fu">mean</span>(<span class="fu">rowMeans</span>(<span class="sc">!</span><span class="fu">is.na</span>(bag<span class="sc">$</span>oob)))))</span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>              model test_acc oob_acc oob_frac
+1       Single tree    0.782       -        -
+2 Bagging (B = 100)    0.828   0.810    0.368</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 트리를 하나씩 더할 때의 누적 정확도 (±1로 바꿔 cumsum하면 다수결과 같다)</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>P   <span class="ot">&lt;-</span> <span class="fu">sapply</span>(bag<span class="sc">$</span>trees, <span class="cf">function</span>(t) <span class="fu">ifelse</span>(<span class="fu">predict</span>(t, te, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">==</span> <span class="st">"B"</span>, <span class="dv">1</span>, <span class="sc">-</span><span class="dv">1</span>))</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>cum <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">apply</span>(P, <span class="dv">1</span>, cumsum))</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>O   <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="fu">is.na</span>(bag<span class="sc">$</span>oob), <span class="dv">0</span>, <span class="fu">ifelse</span>(bag<span class="sc">$</span>oob <span class="sc">==</span> <span class="st">"B"</span>, <span class="dv">1</span>, <span class="sc">-</span><span class="dv">1</span>))</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>cumo <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">apply</span>(O, <span class="dv">1</span>, cumsum))</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>curves2 <span class="ot">&lt;-</span> <span class="fu">rbind</span>(</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">B =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">100</span>, <span class="at">acc =</span> <span class="fu">sapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">100</span>, <span class="cf">function</span>(b) <span class="fu">mean</span>(<span class="fu">ifelse</span>(cum[, b]  <span class="sc">&gt;</span> <span class="dv">0</span>, <span class="st">"B"</span>, <span class="st">"A"</span>) <span class="sc">==</span> te<span class="sc">$</span>y)),</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>             <span class="at">kind =</span> <span class="st">"Test set"</span>),</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">B =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">100</span>, <span class="at">acc =</span> <span class="fu">sapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">100</span>, <span class="cf">function</span>(b) <span class="fu">mean</span>(<span class="fu">ifelse</span>(cumo[, b] <span class="sc">&gt;</span> <span class="dv">0</span>, <span class="st">"B"</span>, <span class="st">"A"</span>) <span class="sc">==</span> tr<span class="sc">$</span>y)),</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">kind =</span> <span class="st">"OOB estimate"</span>)</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(curves2, <span class="fu">aes</span>(B, acc, <span class="at">colour =</span> kind)) <span class="sc">+</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">9</span>) <span class="sc">+</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="fu">mean</span>(<span class="fu">predict</span>(single, te, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">==</span> te<span class="sc">$</span>y),</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>             <span class="at">linetype =</span> <span class="dv">2</span>, <span class="at">colour =</span> <span class="st">"grey40"</span>) <span class="sc">+</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"Test set"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>, <span class="st">"OOB estimate"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>)) <span class="sc">+</span></span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Number of trees (B)"</span>, <span class="at">y =</span> <span class="st">"Accuracy"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"dashed = single tree"</span>) <span class="sc">+</span></span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="09_ensemble_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="624"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>단일 트리 0.782 → 트리 100개 bagging <strong>0.828</strong></li>
+<li><strong>B = 25에서 이미 0.825</strong> — 이득의 대부분은 앞쪽 몇십 개에서 나옵니다. <span class="math inline">\(B\)</span> 를 늘려도 과적합하지 않고 <strong>수렴할 뿐</strong></li>
+<li>OOB 비율 <strong>0.368</strong> — 이론값 <span class="math inline">\(1/e\)</span> 와 정확히 일치</li>
+<li>OOB 추정치 0.810은 test 0.828보다 <strong>살짝 비관적</strong>입니다. 각 샘플이 전체가 아닌 약 37%의 트리로만 예측되기 때문 (정상입니다)</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="random-forest" class="level2">
+<h2 class="anchored" data-anchor-id="random-forest">3. Random Forest 🌲🌲</h2>
+<section id="데이터만이-아니라-feature도-흔든다" class="level3">
+<h3 class="anchored" data-anchor-id="데이터만이-아니라-feature도-흔든다">1) 데이터만이 아니라 feature도 흔든다</h3>
+<ul>
+<li>bagging의 문제 — <strong>강한 feature 하나가 있으면 모든 트리가 그걸 먼저 씁니다.</strong> 트리들이 닮아버림</li>
+<li>random forest는 분할할 때마다 <strong>feature의 무작위 부분집합</strong>만 후보로 두어, 강한 feature를 강제로 비켜 가게 함</li>
+<li>데이터 교란(bootstrap) + <strong>속성 교란(feature sampling)</strong> → 상관이 낮아짐 → 1절의 <span class="math inline">\(\rho\)</span> 가 내려감</li>
+<li>보너스 — feature 일부만 봐도 되므로 결측치와 고차원에 robust, 학습도 빠름</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+이 실습은 진짜 random forest가 아닙니다
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>진짜 RF는 <strong>split마다</strong> feature를 다시 뽑습니다. <code>rpart</code>로는 그렇게 할 수 없어, 여기서는 <strong>tree마다 한 번</strong> 뽑는 <strong>random subspace method</strong>(Ho 1998)로 근사했습니다.</p>
+<p>차이가 중요합니다 — tree마다 뽑으면 그 트리는 나머지 feature를 <strong>영원히</strong> 못 봅니다. 그래서 <code>mtry</code>가 작을 때 성능이 급격히 나빠집니다. 실무에서는 <code>ranger::ranger()</code> 나 <code>randomForest::randomForest()</code> 를 쓰세요.</p>
+</div>
+</div>
+</section>
+<section id="실습-mtry를-바꾸면-무슨-일이-일어나는가" class="level3">
+<h3 class="anchored" data-anchor-id="실습-mtry를-바꾸면-무슨-일이-일어나는가">2) 🧪 실습: mtry를 바꾸면 무슨 일이 일어나는가</h3>
+<p>앙상블 정확도만 보지 말고, <strong>개별 트리의 평균 정확도</strong>와 <strong>트리 사이의 평균 불일치도</strong>를 같이 봅니다.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>mean_single <span class="ot">&lt;-</span> <span class="cf">function</span>(m) <span class="fu">mean</span>(<span class="fu">sapply</span>(m<span class="sc">$</span>trees,</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">function</span>(t) <span class="fu">mean</span>(<span class="fu">predict</span>(t, te, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">==</span> te<span class="sc">$</span>y)))</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>disagreement <span class="ot">&lt;-</span> <span class="cf">function</span>(m) {                 <span class="co"># 두 트리가 다르게 예측하는 비율의 평균</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">sapply</span>(m<span class="sc">$</span>trees, <span class="cf">function</span>(t) <span class="fu">as.character</span>(<span class="fu">predict</span>(t, te, <span class="at">type =</span> <span class="st">"class"</span>)))</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  B <span class="ot">&lt;-</span> <span class="fu">ncol</span>(P); s <span class="ot">&lt;-</span> <span class="dv">0</span>; k <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>(B<span class="dv">-1</span>)) <span class="cf">for</span> (j <span class="cf">in</span> (i<span class="sc">+</span><span class="dv">1</span>)<span class="sc">:</span>B) { s <span class="ot">&lt;-</span> s <span class="sc">+</span> <span class="fu">mean</span>(P[, i] <span class="sc">!=</span> P[, j]); k <span class="ot">&lt;-</span> k <span class="sc">+</span> <span class="dv">1</span> }</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>  s <span class="sc">/</span> k</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>sweep <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">c</span>(<span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">6</span>, <span class="dv">8</span>, <span class="dv">10</span>, <span class="dv">12</span>), <span class="cf">function</span>(mt) {</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>  m <span class="ot">&lt;-</span> <span class="fu">bag_fit</span>(<span class="at">B =</span> <span class="dv">60</span>, <span class="at">mtry =</span> <span class="cf">if</span> (mt <span class="sc">==</span> <span class="dv">12</span>) <span class="cn">NULL</span> <span class="cf">else</span> mt, <span class="at">seed =</span> <span class="dv">7</span>)</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">mtry         =</span> mt,</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>             <span class="at">ensemble     =</span> <span class="fu">round</span>(<span class="fu">mean</span>(<span class="fu">ens_pred</span>(m, te) <span class="sc">==</span> te<span class="sc">$</span>y), <span class="dv">3</span>),</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>             <span class="at">mean_single  =</span> <span class="fu">round</span>(<span class="fu">mean_single</span>(m), <span class="dv">3</span>),</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>             <span class="at">disagreement =</span> <span class="fu">round</span>(<span class="fu">disagreement</span>(m), <span class="dv">3</span>))</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>sweep</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  mtry ensemble mean_single disagreement
+1    2    0.690       0.546        0.486
+2    4    0.748       0.574        0.475
+3    6    0.825       0.641        0.424
+4    8    0.843       0.683        0.378
+5   10    0.835       0.703        0.336
+6   12    0.823       0.725        0.292</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>long <span class="ot">&lt;-</span> <span class="fu">rbind</span>(</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">mtry =</span> sweep<span class="sc">$</span>mtry, <span class="at">value =</span> sweep<span class="sc">$</span>ensemble,</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">panel =</span> <span class="st">"Accuracy"</span>, <span class="at">series =</span> <span class="st">"Ensemble"</span>),</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">mtry =</span> sweep<span class="sc">$</span>mtry, <span class="at">value =</span> sweep<span class="sc">$</span>mean_single,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">panel =</span> <span class="st">"Accuracy"</span>, <span class="at">series =</span> <span class="st">"Mean single tree"</span>),</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">mtry =</span> sweep<span class="sc">$</span>mtry, <span class="at">value =</span> sweep<span class="sc">$</span>disagreement,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">panel =</span> <span class="st">"Diversity (pairwise disagreement)"</span>, <span class="at">series =</span> <span class="st">"Disagreement"</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(long, <span class="fu">aes</span>(mtry, value, <span class="at">colour =</span> series)) <span class="sc">+</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">9</span>) <span class="sc">+</span> <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.8</span>) <span class="sc">+</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> panel, <span class="at">scales =</span> <span class="st">"free_y"</span>) <span class="sc">+</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"Ensemble"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>,</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>                                 <span class="st">"Mean single tree"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>,</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>                                 <span class="st">"Disagreement"</span> <span class="ot">=</span> <span class="st">"#7d8597"</span>)) <span class="sc">+</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"mtry (features sampled per tree)"</span>, <span class="at">y =</span> <span class="cn">NULL</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"B = 60 trees; mtry = 12 means no feature sampling (plain bagging)"</span>) <span class="sc">+</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="09_ensemble_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="768"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><code>mtry</code>가 커질수록 <strong>개별 트리는 정확해지고</strong>(0.546 → 0.725) <strong>서로 닮습니다</strong>(불일치도 0.486 → 0.292)</li>
+<li>앙상블 정확도는 양 끝이 아니라 <strong>가운데 <code>mtry = 8</code>에서 최대(0.843)</strong> 입니다</li>
+<li><code>mtry = 2</code> — 다양성은 최대지만 개별 트리가 거의 찍는 수준(0.546)이라 앙상블도 0.690</li>
+<li><code>mtry = 12</code>(= bagging) — 개별은 가장 정확하지만 서로 닮아 0.823</li>
+<li>✅ <strong>이것이 accuracy–diversity 상충의 실증입니다.</strong> 5절 diversity 이론이 말하는 바로 그 곡선</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="boosting" class="level2">
+<h2 class="anchored" data-anchor-id="boosting">4. Boosting 🔁</h2>
+<section id="아이디어" class="level3">
+<h3 class="anchored" data-anchor-id="아이디어">1) 아이디어</h3>
+<ul>
+<li>일단 약한 학습기를 하나 만든 뒤, <strong>그것이 틀린 샘플에 weight를 주어</strong> 다음 학습기가 거기에 집중하게 함</li>
+<li>최종 결과는 마지막 학습기가 아니라 <strong>모든 학습기의 가중 투표</strong></li>
+<li>bagging이 variance를 줄인다면, boosting은 <strong>bias를 줄입니다</strong></li>
+</ul>
+</section>
+<section id="adaboost" class="level3">
+<h3 class="anchored" data-anchor-id="adaboost">2) AdaBoost</h3>
+<p>샘플 가중치 <span class="math inline">\(w_i\)</span> 를 갱신하며 <span class="math inline">\(M\)</span> 개의 약한 학습기 <span class="math inline">\(h_m\)</span> 을 순차적으로 만듭니다.</p>
+<p><span class="math display">\[\epsilon_m = \sum_i w_i \,\mathbb{1}[h_m(\mathbf{x}_i) \neq y_i], \qquad
+\alpha_m = \tfrac{1}{2}\ln\frac{1-\epsilon_m}{\epsilon_m}, \qquad
+w_i \leftarrow \frac{w_i \exp(-\alpha_m y_i h_m(\mathbf{x}_i))}{Z}\]</span></p>
+<p><span class="math display">\[H(\mathbf{x}) = \mathrm{sign}\left(\sum_{m=1}^{M} \alpha_m h_m(\mathbf{x})\right)\]</span></p>
+<ul>
+<li><span class="math inline">\(\epsilon_m\)</span> 이 작을수록 <span class="math inline">\(\alpha_m\)</span> 이 큼 → <strong>잘 맞춘 학습기에 큰 발언권</strong></li>
+<li>맞힌 샘플은 weight가 줄고, 틀린 샘플은 늘어남 (<span class="math inline">\(y_i h_m = -1\)</span> 이면 <span class="math inline">\(\exp(+\alpha_m)\)</span>)</li>
+</ul>
+</section>
+<section id="실습-adaboost를-직접-구현한다" class="level3">
+<h3 class="anchored" data-anchor-id="실습-adaboost를-직접-구현한다">3) 🧪 실습: AdaBoost를 직접 구현한다</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>ada_fit <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">M =</span> <span class="dv">150</span>, <span class="at">depth =</span> <span class="dv">2</span>, <span class="at">seed =</span> <span class="dv">1</span>) {</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed); N <span class="ot">&lt;-</span> <span class="fu">nrow</span>(tr); w <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">/</span>N, N)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  lev <span class="ot">&lt;-</span> <span class="fu">levels</span>(tr<span class="sc">$</span>y); ys <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(tr<span class="sc">$</span>y <span class="sc">==</span> lev[<span class="dv">2</span>], <span class="dv">1</span>, <span class="sc">-</span><span class="dv">1</span>)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  ct  <span class="ot">&lt;-</span> <span class="fu">rpart.control</span>(<span class="at">maxdepth =</span> depth, <span class="at">cp =</span> <span class="dv">0</span>, <span class="at">minsplit =</span> <span class="dv">2</span>, <span class="at">minbucket =</span> <span class="dv">1</span>, <span class="at">xval =</span> <span class="dv">0</span>)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  dd  <span class="ot">&lt;-</span> tr; mods <span class="ot">&lt;-</span> <span class="fu">vector</span>(<span class="st">"list"</span>, M); alpha <span class="ot">&lt;-</span> <span class="fu">numeric</span>(M)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (m <span class="cf">in</span> <span class="fu">seq_len</span>(M)) {</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    dd<span class="sc">$</span>wt <span class="ot">&lt;-</span> w                                     <span class="co"># rpart는 weights를 data 안에서 찾는다</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    h  <span class="ot">&lt;-</span> <span class="fu">rpart</span>(fm, <span class="at">data =</span> dd, <span class="at">weights =</span> wt, <span class="at">method =</span> <span class="st">"class"</span>, <span class="at">control =</span> ct)</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    p  <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="fu">predict</span>(h, dd, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">==</span> lev[<span class="dv">2</span>], <span class="dv">1</span>, <span class="sc">-</span><span class="dv">1</span>)</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    e  <span class="ot">&lt;-</span> <span class="fu">min</span>(<span class="fu">max</span>(<span class="fu">sum</span>(w <span class="sc">*</span> (p <span class="sc">!=</span> ys)), <span class="fl">1e-10</span>), <span class="dv">1</span> <span class="sc">-</span> <span class="fl">1e-10</span>)</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    a  <span class="ot">&lt;-</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">log</span>((<span class="dv">1</span> <span class="sc">-</span> e) <span class="sc">/</span> e)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    w  <span class="ot">&lt;-</span> w <span class="sc">*</span> <span class="fu">exp</span>(<span class="sc">-</span>a <span class="sc">*</span> ys <span class="sc">*</span> p); w <span class="ot">&lt;-</span> w <span class="sc">/</span> <span class="fu">sum</span>(w)    <span class="co"># 틀린 샘플의 weight를 키운다</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    mods[[m]] <span class="ot">&lt;-</span> h; alpha[m] <span class="ot">&lt;-</span> a</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">mods =</span> mods, <span class="at">alpha =</span> alpha, <span class="at">lev =</span> lev)</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="co"># 1..M 단계까지 누적했을 때의 정확도</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>stage_acc <span class="ot">&lt;-</span> <span class="cf">function</span>(m, nd) {</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>  ys <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(nd<span class="sc">$</span>y <span class="sc">==</span> m<span class="sc">$</span>lev[<span class="dv">2</span>], <span class="dv">1</span>, <span class="sc">-</span><span class="dv">1</span>); S <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">0</span>, <span class="fu">nrow</span>(nd))</span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sapply</span>(<span class="fu">seq_along</span>(m<span class="sc">$</span>alpha), <span class="cf">function</span>(i) {</span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>    S <span class="ot">&lt;&lt;-</span> S <span class="sc">+</span> m<span class="sc">$</span>alpha[i] <span class="sc">*</span> <span class="fu">ifelse</span>(<span class="fu">predict</span>(m<span class="sc">$</span>mods[[i]], nd, <span class="at">type =</span> <span class="st">"class"</span>) <span class="sc">==</span> m<span class="sc">$</span>lev[<span class="dv">2</span>], <span class="dv">1</span>, <span class="sc">-</span><span class="dv">1</span>)</span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mean</span>(<span class="fu">sign</span>(S) <span class="sc">==</span> ys)</span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a>  })</span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-27"><a href="#cb9-27" aria-hidden="true" tabindex="-1"></a>ada <span class="ot">&lt;-</span> <span class="fu">lapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>, <span class="cf">function</span>(dp) <span class="fu">ada_fit</span>(<span class="at">M =</span> <span class="dv">150</span>, <span class="at">depth =</span> dp))</span>
+<span id="cb9-28"><a href="#cb9-28" aria-hidden="true" tabindex="-1"></a><span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>, <span class="cf">function</span>(i) {</span>
+<span id="cb9-29"><a href="#cb9-29" aria-hidden="true" tabindex="-1"></a>  trc <span class="ot">&lt;-</span> <span class="fu">stage_acc</span>(ada[[i]], tr); tec <span class="ot">&lt;-</span> <span class="fu">stage_acc</span>(ada[[i]], te)</span>
+<span id="cb9-30"><a href="#cb9-30" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">base_depth =</span> i, <span class="at">train_acc =</span> <span class="fu">round</span>(<span class="fu">tail</span>(trc, <span class="dv">1</span>), <span class="dv">3</span>),</span>
+<span id="cb9-31"><a href="#cb9-31" aria-hidden="true" tabindex="-1"></a>             <span class="at">test_acc   =</span> <span class="fu">round</span>(<span class="fu">tail</span>(tec, <span class="dv">1</span>), <span class="dv">3</span>),</span>
+<span id="cb9-32"><a href="#cb9-32" aria-hidden="true" tabindex="-1"></a>             <span class="at">best_test  =</span> <span class="fu">round</span>(<span class="fu">max</span>(tec), <span class="dv">3</span>), <span class="at">best_M =</span> <span class="fu">which.max</span>(tec))</span>
+<span id="cb9-33"><a href="#cb9-33" aria-hidden="true" tabindex="-1"></a>}))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  base_depth train_acc test_acc best_test best_M
+1          1     0.868    0.802     0.828     18
+2          2     0.948    0.818     0.835    115
+3          3     1.000    0.818     0.835    133</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>ada_long <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>, <span class="cf">function</span>(i) <span class="fu">rbind</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">M =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">150</span>, <span class="at">acc =</span> <span class="fu">stage_acc</span>(ada[[i]], tr), <span class="at">set =</span> <span class="st">"Train"</span>,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">panel =</span> <span class="fu">paste0</span>(<span class="st">"base depth = "</span>, i)),</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">M =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">150</span>, <span class="at">acc =</span> <span class="fu">stage_acc</span>(ada[[i]], te), <span class="at">set =</span> <span class="st">"Test"</span>,</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">panel =</span> <span class="fu">paste0</span>(<span class="st">"base depth = "</span>, i))</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>)))</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(ada_long, <span class="fu">aes</span>(M, acc, <span class="at">colour =</span> set)) <span class="sc">+</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">8</span>) <span class="sc">+</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> panel) <span class="sc">+</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="at">Train =</span> <span class="st">"#2e8b7a"</span>, <span class="at">Test =</span> <span class="st">"#d1495b"</span>)) <span class="sc">+</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Boosting iterations (M)"</span>, <span class="at">y =</span> <span class="st">"Accuracy"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"stronger base learner -&gt; train accuracy reaches 1.0, test does not follow"</span>) <span class="sc">+</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="09_ensemble_files/figure-html/unnamed-chunk-8-1.png" class="img-fluid figure-img" width="768"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><strong>depth 1 (stump)</strong> — train 0.868 / test 0.802. 약한 학습기라 천천히, 안정적으로 오름</li>
+<li><strong>depth 2</strong> — train 0.948 / test 0.818. 이 데이터에서 가장 좋음</li>
+<li><strong>depth 3</strong> — <strong>train이 1.0에 도달</strong>하는데 test는 0.818에서 멈춥니다. 더 키워도 소용없음</li>
+<li>✅ 원자료 노트의 <em>“learner의 성능이 낮을 때 사용”</em> 이 정확합니다. <strong>boosting의 base learner는 약해야 합니다</strong></li>
+<li>⚠️ AdaBoost는 <strong>라벨 노이즈에 약합니다</strong> — 잘못 붙은 라벨은 계속 틀리므로 weight가 폭주합니다</li>
+</ul>
+</section>
+<section id="gradient-boosting-잔차를-적합한다" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-boosting-잔차를-적합한다">4) Gradient boosting — 잔차를 적합한다</h3>
+<p>AdaBoost를 “손실함수를 함수공간에서 경사하강”으로 일반화한 것입니다. 제곱오차 손실이면 음의 gradient가 곧 <strong>잔차</strong>입니다.</p>
+<p><span class="math display">\[f_0(\mathbf{x}) = \bar{y}, \qquad
+r_i^{(m)} = y_i - f_{m-1}(\mathbf{x}_i), \qquad
+f_m(\mathbf{x}) = f_{m-1}(\mathbf{x}) + \eta\, h_m(\mathbf{x})\]</span></p>
+<ul>
+<li><span class="math inline">\(h_m\)</span> — <strong>잔차를 목표로 적합한</strong> 얕은 회귀 트리</li>
+<li><span class="math inline">\(\eta\)</span> — <strong>learning rate (shrinkage)</strong>. 한 걸음을 작게 밟아 과적합을 늦춤</li>
+<li><span class="math inline">\(\eta\)</span> 와 <span class="math inline">\(M\)</span> 은 <strong>상충</strong> — <span class="math inline">\(\eta\)</span> 를 줄이면 <span class="math inline">\(M\)</span> 을 늘려야 합니다</li>
+</ul>
+</section>
+<section id="실습-shrinkage가-하는-일" class="level3">
+<h3 class="anchored" data-anchor-id="실습-shrinkage가-하는-일">5) 🧪 실습: shrinkage가 하는 일</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">3</span>)</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>nx  <span class="ot">&lt;-</span> <span class="dv">400</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>gx  <span class="ot">&lt;-</span> <span class="fu">sort</span>(<span class="fu">runif</span>(nx, <span class="dv">0</span>, <span class="dv">6</span>)); gy <span class="ot">&lt;-</span> <span class="fu">sin</span>(gx) <span class="sc">+</span> <span class="fl">0.4</span><span class="sc">*</span><span class="fu">cos</span>(<span class="dv">3</span><span class="sc">*</span>gx) <span class="sc">+</span> <span class="fu">rnorm</span>(nx, <span class="dv">0</span>, .<span class="dv">3</span>)</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>gi  <span class="ot">&lt;-</span> <span class="fu">sample</span>(nx, <span class="dv">260</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>gtr <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">x =</span> gx[gi],  <span class="at">y =</span> gy[gi])</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>gte <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">x =</span> gx[<span class="sc">-</span>gi], <span class="at">y =</span> gy[<span class="sc">-</span>gi])</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>gb_fit <span class="ot">&lt;-</span> <span class="cf">function</span>(dtr, <span class="at">M =</span> <span class="dv">300</span>, <span class="at">eta =</span> <span class="fl">0.1</span>, <span class="at">depth =</span> <span class="dv">2</span>) {</span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>  f0 <span class="ot">&lt;-</span> <span class="fu">mean</span>(dtr<span class="sc">$</span>y); f <span class="ot">&lt;-</span> <span class="fu">rep</span>(f0, <span class="fu">nrow</span>(dtr)); mods <span class="ot">&lt;-</span> <span class="fu">vector</span>(<span class="st">"list"</span>, M)</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  ct <span class="ot">&lt;-</span> <span class="fu">rpart.control</span>(<span class="at">maxdepth =</span> depth, <span class="at">cp =</span> <span class="dv">0</span>, <span class="at">minsplit =</span> <span class="dv">10</span>, <span class="at">xval =</span> <span class="dv">0</span>)</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (m <span class="cf">in</span> <span class="fu">seq_len</span>(M)) {</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    r  <span class="ot">&lt;-</span> dtr<span class="sc">$</span>y <span class="sc">-</span> f                                        <span class="co"># 잔차 = 음의 gradient</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    h  <span class="ot">&lt;-</span> <span class="fu">rpart</span>(r <span class="sc">~</span> x, <span class="at">data =</span> <span class="fu">data.frame</span>(<span class="at">x =</span> dtr<span class="sc">$</span>x, <span class="at">r =</span> r),</span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>                <span class="at">method =</span> <span class="st">"anova"</span>, <span class="at">control =</span> ct)</span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>    f  <span class="ot">&lt;-</span> f <span class="sc">+</span> eta <span class="sc">*</span> <span class="fu">predict</span>(h)</span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>    mods[[m]] <span class="ot">&lt;-</span> h</span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">f0 =</span> f0, <span class="at">mods =</span> mods, <span class="at">eta =</span> eta)</span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a>gb_curve <span class="ot">&lt;-</span> <span class="cf">function</span>(g, nd) {                    <span class="co"># M = 1..300 에서의 test RMSE</span></span>
+<span id="cb12-22"><a href="#cb12-22" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">sapply</span>(g<span class="sc">$</span>mods, <span class="cf">function</span>(h) <span class="fu">predict</span>(h, <span class="fu">data.frame</span>(<span class="at">x =</span> nd<span class="sc">$</span>x)))</span>
+<span id="cb12-23"><a href="#cb12-23" aria-hidden="true" tabindex="-1"></a>  cumfit <span class="ot">&lt;-</span> g<span class="sc">$</span>f0 <span class="sc">+</span> g<span class="sc">$</span>eta <span class="sc">*</span> <span class="fu">t</span>(<span class="fu">apply</span>(P, <span class="dv">1</span>, cumsum))</span>
+<span id="cb12-24"><a href="#cb12-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sqrt</span>(<span class="fu">colMeans</span>((cumfit <span class="sc">-</span> nd<span class="sc">$</span>y)<span class="sc">^</span><span class="dv">2</span>))</span>
+<span id="cb12-25"><a href="#cb12-25" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-26"><a href="#cb12-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-27"><a href="#cb12-27" aria-hidden="true" tabindex="-1"></a>gb_long <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">c</span>(<span class="fl">1.0</span>, <span class="fl">0.1</span>, <span class="fl">0.03</span>), <span class="cf">function</span>(e) {</span>
+<span id="cb12-28"><a href="#cb12-28" aria-hidden="true" tabindex="-1"></a>  g <span class="ot">&lt;-</span> <span class="fu">gb_fit</span>(gtr, <span class="at">M =</span> <span class="dv">300</span>, <span class="at">eta =</span> e)</span>
+<span id="cb12-29"><a href="#cb12-29" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">M =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">300</span>, <span class="at">rmse =</span> <span class="fu">gb_curve</span>(g, gte), <span class="at">eta =</span> <span class="fu">sprintf</span>(<span class="st">"eta = %.2f"</span>, e))</span>
+<span id="cb12-30"><a href="#cb12-30" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb12-31"><a href="#cb12-31" aria-hidden="true" tabindex="-1"></a>gb_long<span class="sc">$</span>eta <span class="ot">&lt;-</span> <span class="fu">factor</span>(gb_long<span class="sc">$</span>eta, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"eta = 1.00"</span>, <span class="st">"eta = 0.10"</span>, <span class="st">"eta = 0.03"</span>))</span>
+<span id="cb12-32"><a href="#cb12-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-33"><a href="#cb12-33" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(gb_long, <span class="fu">aes</span>(M, rmse, <span class="at">colour =</span> eta)) <span class="sc">+</span></span>
+<span id="cb12-34"><a href="#cb12-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">85</span>) <span class="sc">+</span></span>
+<span id="cb12-35"><a href="#cb12-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"eta = 1.00"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>,</span>
+<span id="cb12-36"><a href="#cb12-36" aria-hidden="true" tabindex="-1"></a>                                 <span class="st">"eta = 0.10"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>,</span>
+<span id="cb12-37"><a href="#cb12-37" aria-hidden="true" tabindex="-1"></a>                                 <span class="st">"eta = 0.03"</span> <span class="ot">=</span> <span class="st">"#7d8597"</span>)) <span class="sc">+</span></span>
+<span id="cb12-38"><a href="#cb12-38" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="fl">0.3</span>, <span class="at">linetype =</span> <span class="dv">2</span>, <span class="at">colour =</span> <span class="st">"grey40"</span>) <span class="sc">+</span></span>
+<span id="cb12-39"><a href="#cb12-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_cartesian</span>(<span class="at">ylim =</span> <span class="fu">c</span>(<span class="fl">0.28</span>, <span class="fl">0.65</span>)) <span class="sc">+</span></span>
+<span id="cb12-40"><a href="#cb12-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Boosting iterations (M)"</span>, <span class="at">y =</span> <span class="st">"Test RMSE"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb12-41"><a href="#cb12-41" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"dashed = noise floor (sd = 0.3)"</span>) <span class="sc">+</span></span>
+<span id="cb12-42"><a href="#cb12-42" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="09_ensemble_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid figure-img" width="624"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><strong><span class="math inline">\(\eta = 1.0\)</span></strong> — <span class="math inline">\(M = 10\)</span> 에서 0.386으로 가장 좋다가 <span class="math inline">\(M = 300\)</span> 에서 <strong>0.459로 악화</strong>. 학습 RMSE는 0.057까지 내려갑니다(과적합)</li>
+<li><strong><span class="math inline">\(\eta = 0.1\)</span></strong> — 천천히 내려와 0.346에서 <strong>평평하게 유지</strong></li>
+<li><strong><span class="math inline">\(\eta = 0.03\)</span></strong> — 더 느리지만 결국 0.337로 가장 낮음. 대신 <span class="math inline">\(M\)</span> 이 많이 필요</li>
+<li>참고 — 노이즈 바닥은 0.30, 단일 깊은 트리는 0.380</li>
+<li>✅ 실무 기본값: <strong>작은 <span class="math inline">\(\eta\)</span>(0.01~0.1) + 큰 <span class="math inline">\(M\)</span> + early stopping</strong></li>
+</ul>
+</section>
+<section id="xgboost-lightgbm" class="level3">
+<h3 class="anchored" data-anchor-id="xgboost-lightgbm">6) XGBoost / LightGBM</h3>
+<p>정형 데이터에서 사실상 표준이 된 gradient boosting 구현입니다.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>요소</th>
+<th>무엇을 더했나</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>정규화</strong></td>
+<td>leaf 수와 leaf 값에 벌점 (<span class="math inline">\(\gamma\)</span>, <span class="math inline">\(\lambda\)</span>) — W6의 Ridge/Lasso가 트리로 들어온 것</td>
+</tr>
+<tr class="even">
+<td><strong>2차 근사</strong></td>
+<td>gradient만이 아니라 Hessian까지 써서 분할 이득 계산</td>
+</tr>
+<tr class="odd">
+<td><strong>열/행 부분추출</strong></td>
+<td><code>colsample_bytree</code>, <code>subsample</code> — random forest의 아이디어 차용</td>
+</tr>
+<tr class="even">
+<td><strong>결측치 기본 방향</strong></td>
+<td>결측을 어느 쪽 가지로 보낼지 <strong>학습</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>LightGBM</strong></td>
+<td>leaf-wise 성장 + 히스토그램 분할로 대용량에서 훨씬 빠름</td>
+</tr>
+</tbody>
+</table>
+<p>주요 hyperparameter — <code>eta</code>(learning rate), <code>max_depth</code>, <code>min_child_weight</code>, <code>subsample</code>, <code>colsample_bytree</code>, <code>lambda</code>, 그리고 <strong><code>early_stopping_rounds</code></strong>. 튜닝은 W3의 nested CV 구조를 그대로 쓰면 됩니다.</p>
+<hr>
+</section>
+</section>
+<section id="combining-strategy" class="level2">
+<h2 class="anchored" data-anchor-id="combining-strategy">5. Combining strategy 🧩</h2>
+<p>원자료에 제목만 있던 부분입니다. 결합 방법은 셋으로 나뉩니다.</p>
+<section id="averaging-회귀" class="level3">
+<h3 class="anchored" data-anchor-id="averaging-회귀">1) Averaging (회귀)</h3>
+<ul>
+<li><strong>단순 평균</strong> — 학습기 성능이 비슷할 때. 의외로 강력한 기준선</li>
+<li><strong>가중 평균</strong> — 성능 차이가 클 때. 단, 가중치도 추정해야 하므로 <strong>학습기가 적거나 데이터가 적으면 단순 평균이 낫습니다</strong></li>
+</ul>
+</section>
+<section id="voting-분류" class="level3">
+<h3 class="anchored" data-anchor-id="voting-분류">2) Voting (분류)</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>방식</th>
+<th>규칙</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Majority voting</strong></td>
+<td>과반을 얻은 class. 없으면 <strong>기권</strong></td>
+</tr>
+<tr class="even">
+<td><strong>Plurality voting</strong></td>
+<td>최다 득표 class (기권 없음). 대부분의 구현이 이것</td>
+</tr>
+<tr class="odd">
+<td><strong>Weighted voting</strong></td>
+<td>학습기별 가중치를 곱해서 집계</td>
+</tr>
+<tr class="even">
+<td><strong>Soft voting</strong></td>
+<td>class <strong>확률</strong>을 평균. 확률이 잘 보정되어 있으면 hard voting보다 낫습니다 (W4)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="stacking" class="level3">
+<h3 class="anchored" data-anchor-id="stacking">3) Stacking</h3>
+<ul>
+<li>학습기의 <strong>출력을 입력으로 받는 메타 학습기</strong>를 학습시킴</li>
+<li>⚠️ <strong>누수 위험</strong> — base learner가 training set에 과적합해 있으면 메타 학습기가 그 과적합된 예측을 믿습니다</li>
+<li>✅ 반드시 <strong>out-of-fold(OOF) 예측</strong>으로 메타 학습기를 학습시킬 것. W2의 “전처리는 fold 안에서”와 같은 원리</li>
+</ul>
+</section>
+<section id="실습-stacking" class="level3">
+<h3 class="anchored" data-anchor-id="실습-stacking">4) 🧪 실습: stacking</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(class)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>base_pred <span class="ot">&lt;-</span> <span class="cf">function</span>(train_, nd) {</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  g  <span class="ot">&lt;-</span> <span class="fu">glm</span>(fm, <span class="at">data =</span> train_, <span class="at">family =</span> binomial)</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  t_ <span class="ot">&lt;-</span> <span class="fu">rpart</span>(fm, <span class="at">data =</span> train_, <span class="at">method =</span> <span class="st">"class"</span>)</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  s  <span class="ot">&lt;-</span> <span class="fu">scale</span>(train_[fe])</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>  k  <span class="ot">&lt;-</span> <span class="fu">knn</span>(s, <span class="fu">scale</span>(nd[fe], <span class="fu">attr</span>(s, <span class="st">"scaled:center"</span>), <span class="fu">attr</span>(s, <span class="st">"scaled:scale"</span>)),</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>            train_<span class="sc">$</span>y, <span class="at">k =</span> <span class="dv">25</span>, <span class="at">prob =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>  pk <span class="ot">&lt;-</span> <span class="fu">attr</span>(k, <span class="st">"prob"</span>)                          <span class="co"># 다수 class의 득표율</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">glm  =</span> <span class="fu">predict</span>(g, nd, <span class="at">type =</span> <span class="st">"response"</span>),</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>             <span class="at">tree =</span> <span class="fu">predict</span>(t_, nd, <span class="at">type =</span> <span class="st">"prob"</span>)[, <span class="st">"B"</span>],</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>             <span class="at">knn  =</span> <span class="fu">ifelse</span>(k <span class="sc">==</span> <span class="st">"B"</span>, pk, <span class="dv">1</span> <span class="sc">-</span> pk))</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">9</span>)</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>folds <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="at">length.out =</span> <span class="fu">nrow</span>(tr)))</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>oof   <span class="ot">&lt;-</span> <span class="fu">base_pred</span>(tr, tr)                       <span class="co"># 형태만 잡아두고 fold별로 덮어쓴다</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (k <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>) oof[folds <span class="sc">==</span> k, ] <span class="ot">&lt;-</span> <span class="fu">base_pred</span>(tr[folds <span class="sc">!=</span> k, ], tr[folds <span class="sc">==</span> k, ])</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>oof<span class="sc">$</span>y <span class="ot">&lt;-</span> tr<span class="sc">$</span>y</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>meta    <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> glm <span class="sc">+</span> tree <span class="sc">+</span> knn, <span class="at">data =</span> oof, <span class="at">family =</span> binomial)</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>te_base <span class="ot">&lt;-</span> <span class="fu">base_pred</span>(tr, te)</span>
+<span id="cb13-23"><a href="#cb13-23" aria-hidden="true" tabindex="-1"></a>a       <span class="ot">&lt;-</span> <span class="cf">function</span>(p) <span class="fu">round</span>(<span class="fu">mean</span>(<span class="fu">ifelse</span>(p <span class="sc">&gt;</span> <span class="fl">0.5</span>, <span class="st">"B"</span>, <span class="st">"A"</span>) <span class="sc">==</span> te<span class="sc">$</span>y), <span class="dv">3</span>)</span>
+<span id="cb13-24"><a href="#cb13-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-25"><a href="#cb13-25" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
+<span id="cb13-26"><a href="#cb13-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">model    =</span> <span class="fu">c</span>(<span class="st">"Logistic"</span>, <span class="st">"Tree"</span>, <span class="st">"kNN (k = 25)"</span>, <span class="st">"Simple average"</span>, <span class="st">"Stacking (glm meta)"</span>),</span>
+<span id="cb13-27"><a href="#cb13-27" aria-hidden="true" tabindex="-1"></a>  <span class="at">test_acc =</span> <span class="fu">c</span>(<span class="fu">a</span>(te_base<span class="sc">$</span>glm), <span class="fu">a</span>(te_base<span class="sc">$</span>tree), <span class="fu">a</span>(te_base<span class="sc">$</span>knn),</span>
+<span id="cb13-28"><a href="#cb13-28" aria-hidden="true" tabindex="-1"></a>               <span class="fu">a</span>(<span class="fu">rowMeans</span>(te_base)), <span class="fu">a</span>(<span class="fu">predict</span>(meta, te_base, <span class="at">type =</span> <span class="st">"response"</span>)))</span>
+<span id="cb13-29"><a href="#cb13-29" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                model test_acc
+1            Logistic    0.850
+2                Tree    0.782
+3        kNN (k = 25)    0.785
+4      Simple average    0.843
+5 Stacking (glm meta)    0.845</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(<span class="fu">coef</span>(meta), <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>(Intercept)         glm        tree         knn 
+     -3.015       5.044       0.496       0.479 </code></pre>
+</div>
+</div>
+<ul>
+<li>base learner — 로지스틱 0.850, 트리 0.782, kNN 0.785</li>
+<li><strong>단순 평균 0.843</strong> — 약한 학습기 둘이 끌어내려 최고 학습기보다 낮습니다</li>
+<li><strong>stacking 0.845</strong> — 메타 계수가 <code>glm</code> 5.04 vs <code>tree</code> 0.50, <code>knn</code> 0.48로 <strong>좋은 학습기에 가중치를 몰아줍니다</strong></li>
+<li>⚠️ 그런데 <strong>로지스틱 하나(0.850)를 못 이겼습니다.</strong> 진짜 경계가 선형이라 더 보탤 정보가 없었기 때문입니다</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="diversity" class="level2">
+<h2 class="anchored" data-anchor-id="diversity">6. Diversity 🎨</h2>
+<p>원자료에 제목만 있던 부분이자, 앙상블을 이해하는 핵심입니다.</p>
+<section id="error-ambiguity-decomposition" class="level3">
+<h3 class="anchored" data-anchor-id="error-ambiguity-decomposition">1) Error-ambiguity decomposition</h3>
+<p>회귀 앙상블의 오차는 다음처럼 정확히 쪼개집니다.</p>
+<p><span class="math display">\[E_{\text{ensemble}} = \bar{E} - \bar{A}\]</span></p>
+<ul>
+<li><span class="math inline">\(\bar{E}\)</span> — 개별 학습기 오차의 <strong>가중평균</strong> (정확도 항)</li>
+<li><span class="math inline">\(\bar{A}\)</span> — 개별 예측이 앙상블 예측에서 벗어난 정도의 가중평균, 즉 <strong>ambiguity = diversity</strong></li>
+<li><strong>다양할수록 오차가 줄어든다</strong>는 것이 등식으로 증명됩니다</li>
+<li>단, <span class="math inline">\(\bar{E}\)</span> 와 <span class="math inline">\(\bar{A}\)</span> 를 따로 최적화할 수는 없습니다. 다양하게 만들면 보통 <span class="math inline">\(\bar{E}\)</span> 도 커지니까요 → 3절의 <code>mtry</code> 곡선이 바로 이 상충입니다</li>
+</ul>
+</section>
+<section id="diversity-측정" class="level3">
+<h3 class="anchored" data-anchor-id="diversity-측정">2) Diversity 측정</h3>
+<p>두 학습기 <span class="math inline">\(h_i, h_j\)</span> 의 예측을 교차표로 놓고(<span class="math inline">\(a\)</span> = 둘 다 맞음, <span class="math inline">\(b, c\)</span> = 하나만 맞음, <span class="math inline">\(d\)</span> = 둘 다 틀림)</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>지표</th>
+<th>식</th>
+<th>해석</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Disagreement</strong></td>
+<td><span class="math inline">\((b+c)/m\)</span></td>
+<td>다르게 예측한 비율. 클수록 다양 (3절에서 쓴 것)</td>
+</tr>
+<tr class="even">
+<td><strong>Q-statistic</strong></td>
+<td><span class="math inline">\(\dfrac{ad-bc}{ad+bc}\)</span></td>
+<td>−1~1. 0에 가까울수록 독립</td>
+</tr>
+<tr class="odd">
+<td><strong>Correlation</strong></td>
+<td><span class="math inline">\(\dfrac{ad-bc}{\sqrt{(a+b)(c+d)(a+c)(b+d)}}\)</span></td>
+<td>1절의 <span class="math inline">\(\rho\)</span> 에 해당</td>
+</tr>
+<tr class="even">
+<td><strong><span class="math inline">\(\kappa\)</span>-statistic</strong></td>
+<td>우연 일치를 보정한 일치도</td>
+<td><span class="math inline">\(\kappa\)</span>–error diagram으로 시각화</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="diversity를-만드는-네-가지-교란" class="level3">
+<h3 class="anchored" data-anchor-id="diversity를-만드는-네-가지-교란">3) Diversity를 만드는 네 가지 교란</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>교란 대상</th>
+<th>방법</th>
+<th>예</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>데이터</strong></td>
+<td>샘플을 다르게</td>
+<td>Bagging, AdaBoost의 weight</td>
+</tr>
+<tr class="even">
+<td><strong>속성</strong></td>
+<td>feature를 다르게</td>
+<td><strong>Random forest</strong>, random subspace</td>
+</tr>
+<tr class="odd">
+<td><strong>파라미터</strong></td>
+<td>초기값·구조를 다르게</td>
+<td>신경망 seed, 트리 깊이 섞기</td>
+</tr>
+<tr class="even">
+<td><strong>출력</strong></td>
+<td>label 표현을 다르게</td>
+<td>ECOC (W6), flipping output</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>실무에서는 <strong>여러 개를 동시에</strong> 씁니다. random forest = 데이터 + 속성 교란</li>
+<li>heterogeneous ensemble(트리 + 선형 + kNN)은 <strong>알고리즘 자체를 교란</strong>하는 가장 강한 방법이고, 그래서 stacking과 궁합이 좋습니다</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+⚠️ 앙상블을 논문에 쓸 때
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>단일 모델과 반드시 비교할 것.</strong> 이 챕터의 데이터처럼 로지스틱 하나가 이기는 경우가 실제로 흔합니다</li>
+<li><strong>OOB를 test set처럼 쓰지 말 것</strong> — hyperparameter를 OOB로 고르면 OOB는 더 이상 unbiased가 아닙니다</li>
+<li><strong>boosting에서 M은 hyperparameter입니다</strong> — 반드시 validation으로 early stopping</li>
+<li>stacking의 메타 학습기는 <strong>OOF 예측으로만</strong> 학습 (누수)</li>
+<li>변수 중요도는 앙상블에서도 <strong>상관된 feature에 취약</strong>합니다 (W14)</li>
+<li>해석이 필요하면 성능과 맞바꾸는 것임을 인정하고 <strong>SHAP 같은 사후 설명</strong>을 붙일 것 (W14)</li>
+</ul>
+</div>
+</div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this ends up
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>앙상블이 우회한 <strong>비선형 경계를 kernel로 정면돌파</strong> → W10</li>
+<li>Bagging의 평균이 variance를 줄이는 이유는 W4의 <strong>bias–variance 분해</strong> 그 자체</li>
+<li>XGBoost의 leaf 벌점 <span class="math inline">\(\lambda\)</span> 는 W6의 <strong>Ridge</strong>와 같은 것</li>
+<li>트리 기반 변수 중요도, permutation importance, SHAP → W14</li>
+<li>오믹스에서 RF로 feature selection할 때의 함정 → W14</li>
+</ul>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">📝 Summary</h2>
+<ul>
+<li>앙상블의 이론적 근거는 <strong>개별 오차의 독립성</strong> — 독립이면 <span class="math inline">\(T\)</span> 에 대해 오차가 지수적으로 감소</li>
+<li>실습 — 개별 오차 0.4가 독립 51개면 <strong>0.074</strong>, 상관 0.3이면 <strong>0.329에서 멈춤</strong>. 독립성이 전부입니다</li>
+<li><strong>Bagging</strong> — bootstrap으로 데이터를 흔들어 <strong>variance ↓</strong>. 단일 트리 0.782 → 0.828. base learner는 <strong>깊은 트리</strong></li>
+<li><strong>OOB</strong> — bootstrap에서 빠지는 <span class="math inline">\(1/e \approx 0.368\)</span> 로 공짜 validation. 실습에서 0.368 정확히 관측</li>
+<li><strong>Random forest</strong> — 데이터 + <strong>속성</strong> 교란. <code>mtry</code> 2→12에서 개별 정확도 0.546→0.725, 불일치도 0.486→0.292, 앙상블은 <strong>가운데 <code>mtry = 8</code>에서 0.843 최대</strong></li>
+<li><strong>Boosting</strong> — 순차적으로 틀린 샘플에 집중해 <strong>bias ↓</strong>. base learner는 <strong>약해야</strong> 함 (depth 3은 train 1.0인데 test는 제자리)</li>
+<li><strong>Gradient boosting</strong> — 잔차를 적합. <span class="math inline">\(\eta = 1.0\)</span> 은 <span class="math inline">\(M=300\)</span> 에서 RMSE 0.459로 악화, <span class="math inline">\(\eta = 0.1\)</span> 은 0.346에서 안정</li>
+<li><strong>Stacking</strong> — 반드시 <strong>OOF 예측</strong>으로 메타 학습기 학습. 좋은 학습기에 가중치가 몰림(glm 계수 5.04)</li>
+<li><strong><span class="math inline">\(E_{\text{ensemble}} = \bar{E} - \bar{A}\)</span></strong> — 정확도와 다양성의 상충이 앙상블의 전부</li>
+<li>⚠️ <strong>앙상블은 만능이 아닙니다.</strong> 이 데이터에서는 로지스틱 하나(0.850)가 최고였습니다</li>
+</ul>
+</section>
+<section id="key-terms" class="level2">
+<h2 class="anchored" data-anchor-id="key-terms">🔑 Key terms</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>용어</th>
+<th>정의</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Base / component learner</strong></td>
+<td>homogeneous / heterogeneous 앙상블의 개별 학습기</td>
+</tr>
+<tr class="even">
+<td><strong>Hoeffding 상한</strong></td>
+<td>독립 가정에서 다수결 오차의 지수적 상한</td>
+</tr>
+<tr class="odd">
+<td><strong>Bagging</strong></td>
+<td>부트스트랩 표본마다 학습기를 만들어 평균·투표. variance ↓</td>
+</tr>
+<tr class="even">
+<td><strong>OOB</strong></td>
+<td>부트스트랩에서 빠진 약 36.8%로 계산하는 공짜 generalization 추정</td>
+</tr>
+<tr class="odd">
+<td><strong>mtry</strong></td>
+<td>분할 후보로 뽑는 feature 수. 작을수록 다양성 ↑, 개별 정확도 ↓</td>
+</tr>
+<tr class="even">
+<td><strong>Random subspace</strong></td>
+<td>tree마다 feature 부분집합을 뽑는 방법. RF는 split마다 뽑음</td>
+</tr>
+<tr class="odd">
+<td><strong>AdaBoost</strong></td>
+<td>틀린 샘플의 weight를 키우며 <span class="math inline">\(\alpha_m\)</span> 가중 투표로 결합</td>
+</tr>
+<tr class="even">
+<td><strong>Gradient boosting</strong></td>
+<td>잔차(음의 gradient)를 순차적으로 적합</td>
+</tr>
+<tr class="odd">
+<td><strong>Shrinkage (<span class="math inline">\(\eta\)</span>)</strong></td>
+<td>boosting의 한 걸음 크기. 작을수록 robust, <span class="math inline">\(M\)</span> 은 더 필요</td>
+</tr>
+<tr class="even">
+<td><strong>Soft voting</strong></td>
+<td>class 확률을 평균하는 투표. 보정이 잘 되어 있을 때 유리</td>
+</tr>
+<tr class="odd">
+<td><strong>Stacking</strong></td>
+<td>base learner의 OOF 예측을 입력으로 받는 메타 학습기</td>
+</tr>
+<tr class="even">
+<td><strong>Error-ambiguity</strong></td>
+<td><span class="math inline">\(E_{\text{ensemble}} = \bar{E} - \bar{A}\)</span>. 다양성이 오차를 깎는다</td>
+</tr>
+<tr class="odd">
+<td><strong>Disagreement / Q-statistic</strong></td>
+<td>학습기 쌍의 다양성 측정 지표</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="references" class="level2">
+<h2 class="anchored" data-anchor-id="references">➕ References</h2>
+<ul>
+<li>Dietterich TG. Ensemble methods in machine learning. <em>MCS 2000</em>, LNCS 1857:1–15.</li>
+<li>Breiman L. Bagging predictors. <em>Machine Learning</em> 1996;24(2):123–140.</li>
+<li>Breiman L. Random forests. <em>Machine Learning</em> 2001;45(1):5–32.</li>
+<li>Ho TK. The random subspace method for constructing decision forests. <em>IEEE TPAMI</em> 1998;20(8):832–844.</li>
+<li>Freund Y, Schapire RE. A decision-theoretic generalization of on-line learning and an application to boosting. <em>JCSS</em> 1997;55(1):119–139.</li>
+<li>Friedman JH. Greedy function approximation: a gradient boosting machine. <em>Annals of Statistics</em> 2001;29(5):1189–1232.</li>
+<li>Chen T, Guestrin C. XGBoost: a scalable tree boosting system. <em>KDD 2016</em>:785–794.</li>
+<li>Wolpert DH. Stacked generalization. <em>Neural Networks</em> 1992;5(2):241–259.</li>
+<li>Krogh A, Vedelsby J. Neural network ensembles, cross validation, and active learning. <em>NIPS 1994</em>:231–238.</li>
+<li>Kuncheva LI, Whitaker CJ. Measures of diversity in classifier ensembles. <em>Machine Learning</em> 2003;51(2):181–207.</li>
+</ul>
+<hr>
+<p><a href="../chapters/07_decision_tree.html">← W7. Decision Tree</a></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<!-- AI Chat Widget 초기화 -->
+
+<!-- _quarto.yml의 include-after-body에 등록되어 모든 페이지에 자동 삽입됩니다 -->
+
+<script>
+
+  // ★ Cloudflare Worker 배포 후 URL로 교체하세요
+
+  const WORKER_URL = "https://falling-wave-447f.eh0129s.workers.dev/";
+
+
+
+  // 각 .qmd 파일의 YAML에서 ai-context를 읽어옵니다
+
+  // (없으면 빈 문자열 → 기본 안내 메시지)
+
+  const metaContext = document.querySelector('meta[name="ai-context"]');
+
+  const metaTitle   = document.querySelector('meta[name="ai-title"]') || { content: document.title };
+
+
+
+  window.AI_CHAT_CONFIG = {
+
+    workerUrl:      WORKER_URL,
+
+    chapterContext: metaContext ? metaContext.content : "",
+
+    chapterTitle:   metaTitle  ? metaTitle.content   : document.title,
+
+  };
+
+</script>
+
+<script src="../_extensions/ai-chat/ai-chat.js" defer=""></script>
+
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>Copyright 2026, Eunji</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+<script src="../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

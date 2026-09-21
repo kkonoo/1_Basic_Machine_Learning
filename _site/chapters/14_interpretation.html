@@ -1,0 +1,2026 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Eunji Ha">
+<meta name="dcterms.date" content="2026-09-21">
+<meta name="description" content="Variable importance, PDP/ICE, SHAP, 해석 가능한 모델, TRIPOD+AI, 흔한 실수">
+
+<title>W14. 모델 해석과 보고 – 1. Basic Machine Learning</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../images/logo.ico" rel="icon">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-234273d1456647dabc34a594ac50e507.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-b7acaf8b0572301ab572ffd94e5b5c34.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<meta name="ai-title" content="W14. 모델 해석과 보고">
+<meta name="ai-context" content="
+이 챕터는 학습한 모델을 해석하고 논문으로 보고하는 방법을 다룹니다.
+진짜 생성 규칙을 아는 모의 임상 코호트를 써서 설명이 진실과 맞는지 확인합니다.
+결과는 log CRP, 남성에서만 작용하는 나이, BMI의 U자 효과, 약한 혈압 효과로 정해지고,
+lcrp2는 CRP와 상관 0.937인 대리 변수일 뿐 원인이 아니며 lab_x와 flag는 효과가 없습니다.
+test AUC는 선형 로지스틱 0.6525, spline 로지스틱 0.7597, spline과 age:sex 상호작용 0.7678,
+rpart 100개로 만든 random forest 0.7481, 진짜 확률 0.7711입니다.
+불순도 기반 중요도는 효과 없는 연속형 lab_x에 0.052를 줘서 실제 효과가 있는 male 0.017보다 높습니다.
+test set의 permutation importance는 lab_x에 0을 줍니다. train set으로 재면 lab_x도 0.0173으로 부풀려집니다.
+서로 상관된 lcrp와 lcrp2는 하나씩 섞으면 0.0560과 -0.0014인데 함께 섞으면 0.0931입니다.
+하나를 빼고 다시 학습하면 AUC가 거의 안 변합니다. 다른 하나가 대신하기 때문입니다.
+PDP는 BMI의 U자를 되찾지만 양 끝을 과소평가합니다.
+ICE는 PDP가 평균 내 가린 개인차를 보여줍니다. random forest는 나이 효과를 남녀 모두에 비슷하게 퍼뜨렸고
+age:sex를 넣은 GLM은 여성 0.0065, 남성 0.1378로 진실 0과 0.1229에 가깝습니다.
+SHAP은 협력 게임의 Shapley 값으로 예측을 feature별 기여로 나누고 합이 예측과 기준값의 차이와 정확히 같습니다.
+선형 모형에서 SHAP은 beta 곱하기 x에서 평균을 뺀 값과 같습니다.
+SHAP은 모델을 설명하지 세상을 설명하지 않습니다. 원인이 아닌 lcrp2도 SHAP 기여를 받습니다.
+해석 가능한 모델이 블랙박스만큼 좋으면 해석 가능한 모델을 써야 합니다.
+TRIPOD+AI는 2024년 BMJ에 발표된 27개 항목의 보고 지침입니다.
+외부 코호트에서 AUC는 0.8092로 오히려 높았지만 평균 예측 0.4338 대 실제 0.288로 calibration이 크게 어긋났습니다.
+test set을 200번 재사용해 고른 모델은 test AUC 0.6166인데 새 데이터에서는 0.5140입니다.
+전체 데이터로 feature를 고른 뒤 CV하면 순수 잡음에서도 AUC 0.8642가 나오고 fold 안에서 고르면 0.4499입니다.
+유병률 5퍼센트에서 모두 음성이라고 찍으면 정확도 0.9502입니다.
+">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../assets/html.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">1. Basic Machine Learning</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/kkonoo/1_Basic_Machine_Learning"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/14_interpretation.html">W14. 모델 해석과 보고</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Home</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Part 1. 기초</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/01_intro.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W1. Machine Learning이란 무엇인가</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/02_preprocessing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W2. 데이터 준비와 Feature Engineering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/03_validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W3. 검증 설계</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/04_metrics.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W4. 성능 척도와 모델 비교</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/05_linear_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W5. 선형회귀와 로지스틱회귀</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/06_regularization.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W6. 정규화 · LDA · 다중분류 · 불균형</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/07_decision_tree.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W7. Decision Tree</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/09_ensemble.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W9. Ensemble Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/10_svm.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W10. SVM과 Kernel Methods</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/11_bayes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W11. Bayesian Classifier</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/12_clustering.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W12. Clustering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/13_dimension_reduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W13. Dimension Reduction</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/14_interpretation.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">W14. 모델 해석과 보고</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Contents</h2>
+   
+  <ul>
+  <li><a href="#왜-해석하는가" id="toc-왜-해석하는가" class="nav-link active" data-scroll-target="#왜-해석하는가">1. 왜 해석하는가 🔍</a>
+  <ul>
+  <li><a href="#해석의-목적" id="toc-해석의-목적" class="nav-link" data-scroll-target="#해석의-목적">1) 해석의 목적</a></li>
+  <li><a href="#해석의-분류" id="toc-해석의-분류" class="nav-link" data-scroll-target="#해석의-분류">2) 해석의 분류</a></li>
+  <li><a href="#실습-진실을-아는-모의-코호트" id="toc-실습-진실을-아는-모의-코호트" class="nav-link" data-scroll-target="#실습-진실을-아는-모의-코호트">3) 🧪 실습: 진실을 아는 모의 코호트</a></li>
+  </ul></li>
+  <li><a href="#variable-importance" id="toc-variable-importance" class="nav-link" data-scroll-target="#variable-importance">2. Variable importance 📊</a>
+  <ul>
+  <li><a href="#두-가지-중요도" id="toc-두-가지-중요도" class="nav-link" data-scroll-target="#두-가지-중요도">1) 두 가지 중요도</a></li>
+  <li><a href="#실습-효과-없는-변수를-누가-잡아내나" id="toc-실습-효과-없는-변수를-누가-잡아내나" class="nav-link" data-scroll-target="#실습-효과-없는-변수를-누가-잡아내나">2) 🧪 실습: 효과 없는 변수를 누가 잡아내나</a></li>
+  <li><a href="#실습-상관된-변수의-함정" id="toc-실습-상관된-변수의-함정" class="nav-link" data-scroll-target="#실습-상관된-변수의-함정">3) 🧪 실습: 상관된 변수의 함정</a></li>
+  </ul></li>
+  <li><a href="#partial-dependence와-ice" id="toc-partial-dependence와-ice" class="nav-link" data-scroll-target="#partial-dependence와-ice">3. Partial dependence와 ICE 📈</a>
+  <ul>
+  <li><a href="#정의" id="toc-정의" class="nav-link" data-scroll-target="#정의">1) 정의</a></li>
+  <li><a href="#실습-pdp는-u자를-되찾는가" id="toc-실습-pdp는-u자를-되찾는가" class="nav-link" data-scroll-target="#실습-pdp는-u자를-되찾는가">2) 🧪 실습: PDP는 U자를 되찾는가</a></li>
+  <li><a href="#실습-pdp가-가린-것-ice" id="toc-실습-pdp가-가린-것-ice" class="nav-link" data-scroll-target="#실습-pdp가-가린-것-ice">3) 🧪 실습: PDP가 가린 것 — ICE</a></li>
+  <li><a href="#pdp의-가정과-ale" id="toc-pdp의-가정과-ale" class="nav-link" data-scroll-target="#pdp의-가정과-ale">4) PDP의 가정과 ALE</a></li>
+  </ul></li>
+  <li><a href="#shap" id="toc-shap" class="nav-link" data-scroll-target="#shap">4. SHAP 🧮</a>
+  <ul>
+  <li><a href="#shapley-value" id="toc-shapley-value" class="nav-link" data-scroll-target="#shapley-value">1) Shapley value</a></li>
+  <li><a href="#실습-순열-샘플링으로-구현하기" id="toc-실습-순열-샘플링으로-구현하기" class="nav-link" data-scroll-target="#실습-순열-샘플링으로-구현하기">2) 🧪 실습: 순열 샘플링으로 구현하기</a></li>
+  <li><a href="#실습-한-환자의-예측-뜯어보기-local" id="toc-실습-한-환자의-예측-뜯어보기-local" class="nav-link" data-scroll-target="#실습-한-환자의-예측-뜯어보기-local">3) 🧪 실습: 한 환자의 예측 뜯어보기 (local)</a></li>
+  <li><a href="#실습-전역-요약-100명의-shap" id="toc-실습-전역-요약-100명의-shap" class="nav-link" data-scroll-target="#실습-전역-요약-100명의-shap">4) 🧪 실습: 전역 요약 — 100명의 SHAP</a></li>
+  <li><a href="#shap-사용-시-주의" id="toc-shap-사용-시-주의" class="nav-link" data-scroll-target="#shap-사용-시-주의">5) SHAP 사용 시 주의</a></li>
+  </ul></li>
+  <li><a href="#해석-가능한-모델-vs-사후-설명" id="toc-해석-가능한-모델-vs-사후-설명" class="nav-link" data-scroll-target="#해석-가능한-모델-vs-사후-설명">5. 해석 가능한 모델 vs 사후 설명 ⚖️</a></li>
+  <li><a href="#보고-지침" id="toc-보고-지침" class="nav-link" data-scroll-target="#보고-지침">6. 보고 지침 📋</a>
+  <ul>
+  <li><a href="#tripodai" id="toc-tripodai" class="nav-link" data-scroll-target="#tripodai">1) TRIPOD+AI</a></li>
+  <li><a href="#실습-auc만-보고하면-놓치는-것-외부-검증" id="toc-실습-auc만-보고하면-놓치는-것-외부-검증" class="nav-link" data-scroll-target="#실습-auc만-보고하면-놓치는-것-외부-검증">2) 🧪 실습: AUC만 보고하면 놓치는 것 — 외부 검증</a></li>
+  <li><a href="#외부-검증의-의미" id="toc-외부-검증의-의미" class="nav-link" data-scroll-target="#외부-검증의-의미">3) 외부 검증의 의미</a></li>
+  <li><a href="#실습-재현성-버전과-seed를-남긴다" id="toc-실습-재현성-버전과-seed를-남긴다" class="nav-link" data-scroll-target="#실습-재현성-버전과-seed를-남긴다">4) 🧪 실습: 재현성 — 버전과 seed를 남긴다</a></li>
+  </ul></li>
+  <li><a href="#흔한-실수-체크리스트" id="toc-흔한-실수-체크리스트" class="nav-link" data-scroll-target="#흔한-실수-체크리스트">7. 흔한 실수 체크리스트 🚨</a>
+  <ul>
+  <li><a href="#실습-test-set을-여러-번-쓰면" id="toc-실습-test-set을-여러-번-쓰면" class="nav-link" data-scroll-target="#실습-test-set을-여러-번-쓰면">1) 🧪 실습: test set을 여러 번 쓰면</a></li>
+  <li><a href="#실습-cv-밖에서-feature를-고르면" id="toc-실습-cv-밖에서-feature를-고르면" class="nav-link" data-scroll-target="#실습-cv-밖에서-feature를-고르면">2) 🧪 실습: CV 밖에서 feature를 고르면</a></li>
+  <li><a href="#실습-불균형을-무시하면" id="toc-실습-불균형을-무시하면" class="nav-link" data-scroll-target="#실습-불균형을-무시하면">3) 🧪 실습: 불균형을 무시하면</a></li>
+  <li><a href="#체크리스트" id="toc-체크리스트" class="nav-link" data-scroll-target="#체크리스트">4) 체크리스트</a></li>
+  </ul></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">📝 Summary</a></li>
+  <li><a href="#key-terms" id="toc-key-terms" class="nav-link" data-scroll-target="#key-terms">🔑 Key terms</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">➕ References</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content column-body" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/14_interpretation.html">W14. 모델 해석과 보고</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">W14. 모델 해석과 보고</h1>
+</div>
+
+<div>
+  <div class="description">
+    Variable importance, PDP/ICE, SHAP, 해석 가능한 모델, TRIPOD+AI, 흔한 실수
+  </div>
+</div>
+
+
+<div class="quarto-title-meta column-body">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Eunji Ha </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 21, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+🎯 Learning objectives
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>불순도 기반 중요도와 permutation importance의 차이를 설명하고, 어느 쪽을 언제 믿을지 말할 수 있다</strong></li>
+<li>상관된 feature가 중요도 해석을 어떻게 망가뜨리는지 설명할 수 있다</li>
+<li>PDP와 ICE를 그리고, ICE가 PDP보다 나은 상황을 알아볼 수 있다</li>
+<li><strong>SHAP의 정의와 성질을 설명하고, 한 환자의 예측을 feature별 기여로 분해할 수 있다</strong></li>
+<li>“모델을 설명하는 것”과 “세상을 설명하는 것”을 구분할 수 있다</li>
+<li><strong>TRIPOD+AI의 핵심 요구사항을 알고, discrimination과 calibration을 함께 보고할 수 있다</strong></li>
+<li>누수, test set 재사용, 불균형 무시 같은 흔한 실수를 코드로 재현하고 피할 수 있다</li>
+</ul>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>🤔 <strong>모델이 “이 환자의 위험을 올린 가장 큰 요인은 CRP”라고 말한다. 그 말을 믿고 CRP를 낮추면 위험이 줄어들까?</strong></p>
+</blockquote>
+<hr>
+<section id="왜-해석하는가" class="level2">
+<h2 class="anchored" data-anchor-id="왜-해석하는가">1. 왜 해석하는가 🔍</h2>
+<section id="해석의-목적" class="level3">
+<h3 class="anchored" data-anchor-id="해석의-목적">1) 해석의 목적</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>목적</th>
+<th>질문</th>
+<th>예</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>디버깅</strong></td>
+<td>모델이 엉뚱한 것을 배우지 않았나?</td>
+<td>병원 ID·촬영 기기로 질병을 맞히는 모델</td>
+</tr>
+<tr class="even">
+<td><strong>과학적 발견</strong></td>
+<td>어떤 변수가 결과와 관련되는가?</td>
+<td>예후 바이오마커 후보</td>
+</tr>
+<tr class="odd">
+<td><strong>신뢰와 규제</strong></td>
+<td>임상의·심사자가 받아들일 수 있나?</td>
+<td>의료기기 인허가, 논문 심사</td>
+</tr>
+<tr class="even">
+<td><strong>개인별 설명</strong></td>
+<td>이 환자는 왜 고위험인가?</td>
+<td>진료 현장의 의사결정 보조</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="해석의-분류" class="level3">
+<h3 class="anchored" data-anchor-id="해석의-분류">2) 해석의 분류</h3>
+<ul>
+<li><strong>Global vs local</strong> — 모델 전체가 무엇에 기대는가 / 이 한 예측은 왜 이렇게 나왔나</li>
+<li><strong>Model-specific vs model-agnostic</strong> — 트리의 불순도 감소처럼 모델 내부를 쓰는가 / 예측 함수만 있으면 어떤 모델에도 쓸 수 있는가</li>
+<li>이 챕터의 permutation importance, PDP, ICE, SHAP은 모두 <strong>model-agnostic</strong>입니다 — <code>predict()</code>만 있으면 됩니다</li>
+</ul>
+</section>
+<section id="실습-진실을-아는-모의-코호트" class="level3">
+<h3 class="anchored" data-anchor-id="실습-진실을-아는-모의-코호트">3) 🧪 실습: 진실을 아는 모의 코호트</h3>
+<p>설명이 맞는지 확인하려면 <strong>진짜 규칙을 알아야</strong> 합니다. 결과(예: 30일 내 악화)를 다음 규칙으로 만듭니다.</p>
+<p><span class="math display">\[\text{logit}\,P(y=1) = -1.3 + 0.9\,(\text{lcrp} - 1) + 0.07\,(\text{age} - 60)\cdot\text{male} + 0.045\,(\text{bmi} - 27)^2 + 0.012\,(\text{sbp} - 130)\]</span></p>
+<ul>
+<li><strong>lcrp</strong> (log CRP) — 선형 효과</li>
+<li><strong>age</strong> — <strong>남성에서만</strong> 효과 (상호작용)</li>
+<li><strong>bmi</strong> — <strong>U자</strong> 효과 (너무 낮아도, 높아도 위험)</li>
+<li><strong>sbp</strong> — 약한 효과</li>
+<li><strong>lcrp2</strong> — 다른 검사법으로 잰 CRP. lcrp와 강하게 상관되지만 <strong>원인이 아닌 대리 변수</strong></li>
+<li><strong>lab_x</strong>(연속형), <strong>flag</strong>(이진형) — <strong>효과 없음</strong></li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(rpart); <span class="fu">library</span>(splines)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>sim_clin <span class="ot">&lt;-</span> <span class="cf">function</span>(n, seed, <span class="at">shift =</span> <span class="dv">0</span>, <span class="at">age_mu =</span> <span class="dv">60</span>) {</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  age   <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, age_mu, <span class="dv">10</span>)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  male  <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, .<span class="dv">5</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  lcrp  <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, <span class="dv">1</span>, .<span class="dv">8</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  lcrp2 <span class="ot">&lt;-</span> lcrp <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">3</span>)                 <span class="co"># 대리 변수 (원인 아님)</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  bmi   <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, <span class="dv">27</span>, <span class="dv">4</span>)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  sbp   <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, <span class="dv">130</span>, <span class="dv">15</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  lab_x <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)                               <span class="co"># 효과 없음</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  flag  <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, .<span class="dv">5</span>)                       <span class="co"># 효과 없음</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  eta <span class="ot">&lt;-</span> <span class="sc">-</span><span class="fl">1.3</span> <span class="sc">+</span> shift <span class="sc">+</span> <span class="fl">0.9</span> <span class="sc">*</span> (lcrp <span class="sc">-</span> <span class="dv">1</span>) <span class="sc">+</span> <span class="fl">0.07</span> <span class="sc">*</span> (age <span class="sc">-</span> <span class="dv">60</span>) <span class="sc">*</span> male <span class="sc">+</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>         <span class="fl">0.045</span> <span class="sc">*</span> (bmi <span class="sc">-</span> <span class="dv">27</span>)<span class="sc">^</span><span class="dv">2</span> <span class="sc">+</span> <span class="fl">0.012</span> <span class="sc">*</span> (sbp <span class="sc">-</span> <span class="dv">130</span>)</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  y <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fu">plogis</span>(eta))</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(age, male, lcrp, lcrp2, bmi, sbp, lab_x, flag, y, <span class="at">p_true =</span> <span class="fu">plogis</span>(eta))</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>true_eta <span class="ot">&lt;-</span> <span class="cf">function</span>(d) <span class="sc">-</span><span class="fl">1.3</span> <span class="sc">+</span> <span class="fl">0.9</span> <span class="sc">*</span> (d<span class="sc">$</span>lcrp <span class="sc">-</span> <span class="dv">1</span>) <span class="sc">+</span> <span class="fl">0.07</span> <span class="sc">*</span> (d<span class="sc">$</span>age <span class="sc">-</span> <span class="dv">60</span>) <span class="sc">*</span> d<span class="sc">$</span>male <span class="sc">+</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>                         <span class="fl">0.045</span> <span class="sc">*</span> (d<span class="sc">$</span>bmi <span class="sc">-</span> <span class="dv">27</span>)<span class="sc">^</span><span class="dv">2</span> <span class="sc">+</span> <span class="fl">0.012</span> <span class="sc">*</span> (d<span class="sc">$</span>sbp <span class="sc">-</span> <span class="dv">130</span>)</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>feats <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"age"</span>, <span class="st">"male"</span>, <span class="st">"lcrp"</span>, <span class="st">"lcrp2"</span>, <span class="st">"bmi"</span>, <span class="st">"sbp"</span>, <span class="st">"lab_x"</span>, <span class="st">"flag"</span>)</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>tr <span class="ot">&lt;-</span> <span class="fu">sim_clin</span>(<span class="dv">1000</span>, <span class="dv">1</span>); te <span class="ot">&lt;-</span> <span class="fu">sim_clin</span>(<span class="dv">2000</span>, <span class="dv">2</span>)</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">prevalence_train =</span> <span class="fu">round</span>(<span class="fu">mean</span>(tr<span class="sc">$</span>y), <span class="dv">3</span>), <span class="at">prevalence_test =</span> <span class="fu">round</span>(<span class="fu">mean</span>(te<span class="sc">$</span>y), <span class="dv">3</span>),</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">cor_lcrp_lcrp2 =</span> <span class="fu">round</span>(<span class="fu">cor</span>(tr<span class="sc">$</span>lcrp, tr<span class="sc">$</span>lcrp2), <span class="dv">3</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>prevalence_train  prevalence_test   cor_lcrp_lcrp2 
+           0.373            0.391            0.937 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>auc <span class="ot">&lt;-</span> <span class="cf">function</span>(p, y) {                          <span class="co"># Mann-Whitney 로 계산한 AUC</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  r <span class="ot">&lt;-</span> <span class="fu">rank</span>(p); n1 <span class="ot">&lt;-</span> <span class="fu">sum</span>(y <span class="sc">==</span> <span class="dv">1</span>); n0 <span class="ot">&lt;-</span> <span class="fu">sum</span>(y <span class="sc">==</span> <span class="dv">0</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  (<span class="fu">sum</span>(r[y <span class="sc">==</span> <span class="dv">1</span>]) <span class="sc">-</span> n1 <span class="sc">*</span> (n1 <span class="sc">+</span> <span class="dv">1</span>) <span class="sc">/</span> <span class="dv">2</span>) <span class="sc">/</span> (n1 <span class="sc">*</span> n0)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="do">## 블랙박스 : rpart 100개로 만든 random forest (W9)</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>rf_fit <span class="ot">&lt;-</span> <span class="cf">function</span>(d, feats, <span class="at">ntree =</span> <span class="dv">100</span>, <span class="at">mtry =</span> <span class="dv">6</span>, <span class="at">seed =</span> <span class="dv">1</span>) {</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed)</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">lapply</span>(<span class="fu">seq_len</span>(ntree), <span class="cf">function</span>(b) {</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    idx <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">nrow</span>(d), <span class="at">replace =</span> <span class="cn">TRUE</span>); f <span class="ot">&lt;-</span> <span class="fu">sample</span>(feats, mtry)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">rpart</span>(<span class="fu">reformulate</span>(f, <span class="st">"y"</span>), <span class="at">data =</span> d[idx, <span class="fu">c</span>(f, <span class="st">"y"</span>)], <span class="at">method =</span> <span class="st">"anova"</span>,</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>          <span class="at">control =</span> <span class="fu">rpart.control</span>(<span class="at">cp =</span> <span class="fl">0.001</span>, <span class="at">minbucket =</span> <span class="dv">20</span>, <span class="at">xval =</span> <span class="dv">0</span>, <span class="at">maxsurrogate =</span> <span class="dv">0</span>))</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>  })</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>rf_pred <span class="ot">&lt;-</span> <span class="cf">function</span>(m, newdata) <span class="fu">rowMeans</span>(<span class="fu">sapply</span>(m, predict, <span class="at">newdata =</span> newdata))</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>rf <span class="ot">&lt;-</span> <span class="fu">rf_fit</span>(tr, feats)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>pf <span class="ot">&lt;-</span> <span class="cf">function</span>(d) <span class="fu">rf_pred</span>(rf, d)                 <span class="co"># 해석 도구에 넘길 "예측 함수"</span></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>m_lin <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> age <span class="sc">+</span> male <span class="sc">+</span> lcrp <span class="sc">+</span> lcrp2 <span class="sc">+</span> bmi <span class="sc">+</span> sbp <span class="sc">+</span> lab_x <span class="sc">+</span> flag, <span class="at">data =</span> tr, <span class="at">family =</span> binomial)</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>m_spl <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> <span class="fu">ns</span>(age, <span class="dv">3</span>) <span class="sc">+</span> male <span class="sc">+</span> <span class="fu">ns</span>(lcrp, <span class="dv">3</span>) <span class="sc">+</span> lcrp2 <span class="sc">+</span> <span class="fu">ns</span>(bmi, <span class="dv">3</span>) <span class="sc">+</span> <span class="fu">ns</span>(sbp, <span class="dv">3</span>) <span class="sc">+</span> lab_x <span class="sc">+</span> flag,</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>             <span class="at">data =</span> tr, <span class="at">family =</span> binomial)</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>m_int <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> <span class="fu">ns</span>(age, <span class="dv">3</span>) <span class="sc">*</span> male <span class="sc">+</span> <span class="fu">ns</span>(lcrp, <span class="dv">3</span>) <span class="sc">+</span> lcrp2 <span class="sc">+</span> <span class="fu">ns</span>(bmi, <span class="dv">3</span>) <span class="sc">+</span> <span class="fu">ns</span>(sbp, <span class="dv">3</span>) <span class="sc">+</span> lab_x <span class="sc">+</span> flag,</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>             <span class="at">data =</span> tr, <span class="at">family =</span> binomial)</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">model =</span> <span class="fu">c</span>(<span class="st">"logistic (linear)"</span>, <span class="st">"logistic + splines"</span>, <span class="st">"logistic + splines + age:sex"</span>,</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>                     <span class="st">"random forest (100 rpart trees)"</span>, <span class="st">"true probability (ceiling)"</span>),</span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>           <span class="at">test_AUC =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">auc</span>(<span class="fu">predict</span>(m_lin, te), te<span class="sc">$</span>y), <span class="fu">auc</span>(<span class="fu">predict</span>(m_spl, te), te<span class="sc">$</span>y),</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>                              <span class="fu">auc</span>(<span class="fu">predict</span>(m_int, te), te<span class="sc">$</span>y), <span class="fu">auc</span>(<span class="fu">pf</span>(te), te<span class="sc">$</span>y),</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>                              <span class="fu">auc</span>(te<span class="sc">$</span>p_true, te<span class="sc">$</span>y)), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                            model test_AUC
+1               logistic (linear)   0.6525
+2              logistic + splines   0.7597
+3    logistic + splines + age:sex   0.7678
+4 random forest (100 rpart trees)   0.7481
+5      true probability (ceiling)   0.7711</code></pre>
+</div>
+</div>
+<ul>
+<li>진짜 확률로도 AUC <strong>0.7711</strong>이 상한입니다 (W11의 Bayes 상한)</li>
+<li>선형 로지스틱은 U자와 상호작용을 못 잡아 <strong>0.6525</strong></li>
+<li><strong>random forest(0.7481)가 spline 로지스틱(0.7597)보다 낮습니다.</strong> 5절에서 다시 이야기합니다</li>
+<li>이제 random forest를 “블랙박스”로 두고, 해석 도구들이 진실을 얼마나 되찾는지 봅니다</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="variable-importance" class="level2">
+<h2 class="anchored" data-anchor-id="variable-importance">2. Variable importance 📊</h2>
+<section id="두-가지-중요도" class="level3">
+<h3 class="anchored" data-anchor-id="두-가지-중요도">1) 두 가지 중요도</h3>
+<p><strong>불순도 기반 (impurity / Gini / MDI)</strong> — 트리에서 그 변수로 나눌 때 줄어든 불순도(회귀는 SSE)를 모든 split·모든 트리에 걸쳐 합친 것. <strong>학습 데이터로</strong> 계산되고 공짜로 나옵니다.</p>
+<p><strong>Permutation importance</strong> — <strong>test set에서</strong> 그 변수 하나만 무작위로 섞었을 때 성능이 얼마나 떨어지는가.</p>
+<p><span class="math display">\[\text{PI}_j = \text{AUC}(\text{원래}) - \text{AUC}(x_j \text{를 섞은 데이터})\]</span></p>
+<p>섞으면 <span class="math inline">\(x_j\)</span> 와 <span class="math inline">\(y\)</span> 의 관계가 끊어지므로, 모델이 <span class="math inline">\(x_j\)</span> 에 기대고 있었다면 성능이 떨어집니다.</p>
+</section>
+<section id="실습-효과-없는-변수를-누가-잡아내나" class="level3">
+<h3 class="anchored" data-anchor-id="실습-효과-없는-변수를-누가-잡아내나">2) 🧪 실습: 효과 없는 변수를 누가 잡아내나</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>imp_impurity <span class="ot">&lt;-</span> <span class="fu">sapply</span>(feats, <span class="cf">function</span>(v) <span class="fu">sum</span>(<span class="fu">sapply</span>(rf, <span class="cf">function</span>(t)</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (v <span class="sc">%in%</span> <span class="fu">names</span>(t<span class="sc">$</span>variable.importance)) t<span class="sc">$</span>variable.importance[[v]] <span class="cf">else</span> <span class="dv">0</span>)))</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>imp_impurity <span class="ot">&lt;-</span> imp_impurity <span class="sc">/</span> <span class="fu">sum</span>(imp_impurity)                 <span class="co"># 비율로</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>perm_imp <span class="ot">&lt;-</span> <span class="cf">function</span>(pred_fun, d, feats, <span class="at">R =</span> <span class="dv">5</span>, <span class="at">seed =</span> <span class="dv">1</span>, <span class="at">groups =</span> <span class="cn">NULL</span>) {</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">set.seed</span>(seed); base <span class="ot">&lt;-</span> <span class="fu">auc</span>(<span class="fu">pred_fun</span>(d), d<span class="sc">$</span>y)</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>  items <span class="ot">&lt;-</span> <span class="cf">if</span> (<span class="fu">is.null</span>(groups)) <span class="fu">as.list</span>(feats) <span class="cf">else</span> groups</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sapply</span>(items, <span class="cf">function</span>(g) <span class="fu">mean</span>(<span class="fu">replicate</span>(R, {</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>    dp <span class="ot">&lt;-</span> d; idx <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">nrow</span>(d)); dp[g] <span class="ot">&lt;-</span> d[idx, g, drop <span class="ot">=</span> <span class="cn">FALSE</span>]   <span class="co"># g 만 섞는다</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>    base <span class="sc">-</span> <span class="fu">auc</span>(<span class="fu">pred_fun</span>(dp), d<span class="sc">$</span>y)</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  })))</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>pi_test  <span class="ot">&lt;-</span> <span class="fu">perm_imp</span>(pf, te, feats)</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>pi_train <span class="ot">&lt;-</span> <span class="fu">perm_imp</span>(pf, tr, feats)</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>imp_tab <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">feature =</span> feats,</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">true_effect =</span> <span class="fu">c</span>(<span class="st">"yes (male only)"</span>, <span class="st">"yes (via age)"</span>, <span class="st">"yes"</span>, <span class="st">"no (proxy)"</span>, <span class="st">"yes (U-shape)"</span>,</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>                  <span class="st">"yes (weak)"</span>, <span class="st">"no"</span>, <span class="st">"no"</span>),</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">impurity_share =</span> <span class="fu">round</span>(imp_impurity, <span class="dv">3</span>),</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">perm_AUC_drop_test =</span> <span class="fu">round</span>(pi_test, <span class="dv">4</span>), <span class="at">perm_AUC_drop_train =</span> <span class="fu">round</span>(pi_train, <span class="dv">4</span>),</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">row.names =</span> <span class="cn">NULL</span>)</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>imp_tab</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  feature     true_effect impurity_share perm_AUC_drop_test perm_AUC_drop_train
+1     age yes (male only)          0.148             0.0233              0.0694
+2    male   yes (via age)          0.017             0.0030              0.0059
+3    lcrp             yes          0.226             0.0581              0.1113
+4   lcrp2      no (proxy)          0.110             0.0013              0.0215
+5     bmi   yes (U-shape)          0.368             0.1283              0.1710
+6     sbp      yes (weak)          0.074             0.0042              0.0303
+7   lab_x              no          0.052             0.0000              0.0173
+8    flag              no          0.005            -0.0001              0.0020</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>eff <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(feats <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">"lcrp2"</span>, <span class="st">"lab_x"</span>, <span class="st">"flag"</span>), <span class="st">"no causal effect"</span>, <span class="st">"has effect"</span>)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>il <span class="ot">&lt;-</span> <span class="fu">rbind</span>(<span class="fu">data.frame</span>(<span class="at">feature =</span> feats, <span class="at">v =</span> imp_impurity, <span class="at">what =</span> <span class="st">"impurity share (train)"</span>, <span class="at">eff =</span> eff),</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>            <span class="fu">data.frame</span>(<span class="at">feature =</span> feats, <span class="at">v =</span> pi_test, <span class="at">what =</span> <span class="st">"permutation AUC drop (test)"</span>, <span class="at">eff =</span> eff))</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>il<span class="sc">$</span>what <span class="ot">&lt;-</span> <span class="fu">factor</span>(il<span class="sc">$</span>what, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"impurity share (train)"</span>, <span class="st">"permutation AUC drop (test)"</span>))</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>il<span class="sc">$</span>feature <span class="ot">&lt;-</span> <span class="fu">factor</span>(il<span class="sc">$</span>feature, <span class="at">levels =</span> <span class="fu">rev</span>(feats))</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(il, <span class="fu">aes</span>(v, feature, <span class="at">fill =</span> eff)) <span class="sc">+</span> <span class="fu">geom_col</span>(<span class="at">width =</span> .<span class="dv">7</span>) <span class="sc">+</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> what, <span class="at">scales =</span> <span class="st">"free_x"</span>) <span class="sc">+</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"has effect"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>, <span class="st">"no causal effect"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>)) <span class="sc">+</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="cn">NULL</span>, <span class="at">fill =</span> <span class="cn">NULL</span>) <span class="sc">+</span> <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"bottom"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="729"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>효과 없는 연속형 <strong>lab_x가 불순도 중요도 0.052</strong>를 받아, 실제 효과가 있는 <strong>male(0.017)보다 높습니다</strong></li>
+<li>같은 “효과 없음”인 이진형 <strong>flag는 0.005</strong> — 연속형은 나눌 지점이 수백 개라 <strong>우연히 좋아 보이는 split을 찾을 기회가 많기 때문</strong>입니다 (Strobl et al.&nbsp;2007)</li>
+<li>test set의 permutation importance는 lab_x <strong>0.0000</strong>, flag <strong>-0.0001</strong> — 정확히 걸러냅니다</li>
+<li>⚠️ <strong>train set으로 permutation importance를 재면 lab_x도 0.0173</strong>. 모델이 학습 데이터의 잡음까지 외운 만큼 부풀려집니다. <strong>반드시 test(또는 OOB) 데이터로</strong></li>
+<li>male의 중요도가 작게 나오는 것은 male이 <strong>age를 통해서만</strong> 작용하기 때문입니다 — 중요도는 상호작용을 한 변수에 깔끔하게 배분하지 못합니다</li>
+</ul>
+</section>
+<section id="실습-상관된-변수의-함정" class="level3">
+<h3 class="anchored" data-anchor-id="실습-상관된-변수의-함정">3) 🧪 실습: 상관된 변수의 함정</h3>
+<p>lcrp와 lcrp2는 상관 0.937. 모델은 둘 중 아무거나 써도 됩니다.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>grp <span class="ot">&lt;-</span> <span class="fu">perm_imp</span>(pf, te, feats, <span class="at">groups =</span> <span class="fu">list</span>(<span class="st">"lcrp"</span>, <span class="st">"lcrp2"</span>, <span class="fu">c</span>(<span class="st">"lcrp"</span>, <span class="st">"lcrp2"</span>)))</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>base_auc <span class="ot">&lt;-</span> <span class="fu">auc</span>(<span class="fu">pf</span>(te), te<span class="sc">$</span>y)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>drop_refit <span class="ot">&lt;-</span> <span class="fu">sapply</span>(<span class="fu">list</span>(<span class="st">"lcrp"</span>, <span class="st">"lcrp2"</span>, <span class="fu">c</span>(<span class="st">"lcrp"</span>, <span class="st">"lcrp2"</span>)), <span class="cf">function</span>(g)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  base_auc <span class="sc">-</span> <span class="fu">auc</span>(<span class="fu">rf_pred</span>(<span class="fu">rf_fit</span>(tr, <span class="fu">setdiff</span>(feats, g)), te), te<span class="sc">$</span>y))</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">what =</span> <span class="fu">c</span>(<span class="st">"lcrp"</span>, <span class="st">"lcrp2"</span>, <span class="st">"lcrp + lcrp2 together"</span>),</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">permute_AUC_drop =</span> <span class="fu">round</span>(grp, <span class="dv">4</span>), <span class="at">drop_and_refit_AUC_drop =</span> <span class="fu">round</span>(drop_refit, <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                   what permute_AUC_drop drop_and_refit_AUC_drop
+1                  lcrp           0.0560                  0.0043
+2                 lcrp2          -0.0014                 -0.0026
+3 lcrp + lcrp2 together           0.0931                  0.0493</code></pre>
+</div>
+</div>
+<ul>
+<li><strong>하나씩 섞으면</strong> lcrp 0.0560, lcrp2 -0.0014. <strong>함께 섞으면 0.0931</strong> — 둘의 합보다 훨씬 큽니다</li>
+<li><strong>빼고 다시 학습</strong>(drop-column)하면 어느 하나를 빼도 AUC가 거의 안 변합니다(0.0043, -0.0026). <strong>다른 하나가 대신하기 때문</strong>입니다. 둘 다 빼야 0.0493</li>
+<li>⚠️ 그러니 “lcrp를 빼도 성능이 같으니 CRP는 중요하지 않다”도, “lcrp2의 permutation importance가 0이니 무의미하다”도 틀린 결론입니다</li>
+<li>⚠️ 또 하나를 섞으면 <strong>“CRP는 높은데 hs-CRP는 낮은” 현실에 없는 환자</strong>가 만들어집니다. 모델은 그런 데이터를 본 적이 없으므로 그 예측은 <strong>외삽</strong>입니다</li>
+<li>✅ 대처 — 상관된 변수는 <strong>묶어서(grouped)</strong> 섞거나, 조건부(conditional) permutation을 쓰거나, 분석 전에 대표 변수 하나만 남기기</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="partial-dependence와-ice" class="level2">
+<h2 class="anchored" data-anchor-id="partial-dependence와-ice">3. Partial dependence와 ICE 📈</h2>
+<section id="정의" class="level3">
+<h3 class="anchored" data-anchor-id="정의">1) 정의</h3>
+<p><strong>PDP (Partial Dependence Plot)</strong> — 관심 변수 <span class="math inline">\(x_S\)</span> 를 <span class="math inline">\(v\)</span> 로 <strong>모든 샘플에 똑같이 고정</strong>하고 예측을 평균</p>
+<p><span class="math display">\[\hat{f}_S(v) = \frac{1}{n}\sum_{i=1}^{n}\hat{f}(v, \mathbf{x}_{i,C})\]</span></p>
+<p><strong>ICE (Individual Conditional Expectation)</strong> — 평균 내기 전의 <strong>샘플별 곡선</strong> <span class="math inline">\(\hat{f}(v, \mathbf{x}_{i,C})\)</span>. PDP는 ICE 곡선들의 평균입니다.</p>
+</section>
+<section id="실습-pdp는-u자를-되찾는가" class="level3">
+<h3 class="anchored" data-anchor-id="실습-pdp는-u자를-되찾는가">2) 🧪 실습: PDP는 U자를 되찾는가</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>pdp <span class="ot">&lt;-</span> <span class="cf">function</span>(pred_fun, d, var, grid) <span class="fu">sapply</span>(grid, <span class="cf">function</span>(g) { d[[var]] <span class="ot">&lt;-</span> g; <span class="fu">mean</span>(<span class="fu">pred_fun</span>(d)) })</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>g_bmi   <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">18</span>, <span class="dv">36</span>, <span class="at">by =</span> <span class="dv">1</span>)</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>pdp_rf  <span class="ot">&lt;-</span> <span class="fu">pdp</span>(pf, te, <span class="st">"bmi"</span>, g_bmi)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>pdp_tru <span class="ot">&lt;-</span> <span class="fu">pdp</span>(<span class="cf">function</span>(d) <span class="fu">plogis</span>(<span class="fu">true_eta</span>(d)), te, <span class="st">"bmi"</span>, g_bmi)   <span class="co"># 진짜 모형의 PDP</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(<span class="fu">data.frame</span>(<span class="at">bmi =</span> g_bmi, <span class="at">random_forest =</span> pdp_rf, <span class="at">truth =</span> pdp_tru)[<span class="fu">c</span>(<span class="dv">1</span>, <span class="dv">5</span>, <span class="dv">10</span>, <span class="dv">15</span>, <span class="dv">19</span>), ], <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   bmi random_forest truth
+1   18         0.683 0.891
+5   22         0.398 0.471
+10  27         0.272 0.251
+15  32         0.416 0.471
+19  36         0.653 0.891</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">argmin_rf =</span> g_bmi[<span class="fu">which.min</span>(pdp_rf)], <span class="at">argmin_truth =</span> g_bmi[<span class="fu">which.min</span>(pdp_tru)],</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">cor_rf_truth =</span> <span class="fu">round</span>(<span class="fu">cor</span>(pdp_rf, pdp_tru), <span class="dv">3</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   argmin_rf argmin_truth cor_rf_truth 
+      25.000       27.000        0.955 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>pl <span class="ot">&lt;-</span> <span class="fu">rbind</span>(<span class="fu">data.frame</span>(<span class="at">bmi =</span> g_bmi, <span class="at">p =</span> pdp_rf,  <span class="at">src =</span> <span class="st">"random forest PDP"</span>),</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>            <span class="fu">data.frame</span>(<span class="at">bmi =</span> g_bmi, <span class="at">p =</span> pdp_tru, <span class="at">src =</span> <span class="st">"true model PDP"</span>))</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(pl, <span class="fu">aes</span>(bmi, p, <span class="at">colour =</span> src, <span class="at">linetype =</span> src)) <span class="sc">+</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_rug</span>(<span class="at">data =</span> te, <span class="fu">aes</span>(<span class="at">x =</span> bmi), <span class="at">inherit.aes =</span> <span class="cn">FALSE</span>, <span class="at">alpha =</span> .<span class="dv">08</span>, <span class="at">sides =</span> <span class="st">"b"</span>) <span class="sc">+</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"random forest PDP"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>, <span class="st">"true model PDP"</span> <span class="ot">=</span> <span class="st">"#7d8597"</span>)) <span class="sc">+</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_linetype_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"random forest PDP"</span> <span class="ot">=</span> <span class="dv">1</span>, <span class="st">"true model PDP"</span> <span class="ot">=</span> <span class="dv">2</span>)) <span class="sc">+</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"BMI"</span>, <span class="at">y =</span> <span class="st">"average predicted risk"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>, <span class="at">linetype =</span> <span class="cn">NULL</span>) <span class="sc">+</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"bottom"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>random forest의 PDP가 <strong>U자를 되찾습니다</strong> (최저점 BMI 25 vs 진짜 27, 곡선 상관 0.955)</li>
+<li>다만 <strong>양 끝을 과소평가</strong>합니다 — BMI 18에서 0.683 vs 진짜 0.891. 아래 rug처럼 <strong>양 끝에는 데이터가 거의 없어</strong> 트리가 평평하게 끊습니다</li>
+<li>⚠️ PDP는 <strong>데이터가 드문 구간에서 가장 믿기 어렵습니다.</strong> 항상 rug나 히스토그램을 같이 그리세요</li>
+</ul>
+</section>
+<section id="실습-pdp가-가린-것-ice" class="level3">
+<h3 class="anchored" data-anchor-id="실습-pdp가-가린-것-ice">3) 🧪 실습: PDP가 가린 것 — ICE</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">5</span>); ice_idx <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">nrow</span>(te), <span class="dv">150</span>)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>g_age <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">40</span>, <span class="dv">80</span>, <span class="at">by =</span> <span class="dv">2</span>)</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>ice_curves <span class="ot">&lt;-</span> <span class="cf">function</span>(pred_fun) <span class="fu">sapply</span>(g_age, <span class="cf">function</span>(g) { d <span class="ot">&lt;-</span> te[ice_idx, ]; d<span class="sc">$</span>age <span class="ot">&lt;-</span> g; <span class="fu">pred_fun</span>(d) })</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>ice_rf  <span class="ot">&lt;-</span> <span class="fu">ice_curves</span>(pf)</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>ice_glm <span class="ot">&lt;-</span> <span class="fu">ice_curves</span>(<span class="cf">function</span>(d) <span class="fu">predict</span>(m_int, d, <span class="at">type =</span> <span class="st">"response"</span>))</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>ice_tru <span class="ot">&lt;-</span> <span class="fu">ice_curves</span>(<span class="cf">function</span>(d) <span class="fu">plogis</span>(<span class="fu">true_eta</span>(d)))</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>sx <span class="ot">&lt;-</span> te<span class="sc">$</span>male[ice_idx]</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>slope10 <span class="ot">&lt;-</span> <span class="cf">function</span>(M) <span class="dv">10</span> <span class="sc">*</span> <span class="fu">apply</span>(M, <span class="dv">1</span>, <span class="cf">function</span>(r) <span class="fu">coef</span>(<span class="fu">lm</span>(r <span class="sc">~</span> g_age))[<span class="dv">2</span>])   <span class="co"># 10년당 위험 변화</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">model =</span> <span class="fu">c</span>(<span class="st">"random forest"</span>, <span class="st">"GLM splines + age:sex"</span>, <span class="st">"truth"</span>),</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>           <span class="at">female =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">mean</span>(<span class="fu">slope10</span>(ice_rf)[sx <span class="sc">==</span> <span class="dv">0</span>]), <span class="fu">mean</span>(<span class="fu">slope10</span>(ice_glm)[sx <span class="sc">==</span> <span class="dv">0</span>]),</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>                            <span class="fu">mean</span>(<span class="fu">slope10</span>(ice_tru)[sx <span class="sc">==</span> <span class="dv">0</span>])), <span class="dv">4</span>),</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>           <span class="at">male   =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">mean</span>(<span class="fu">slope10</span>(ice_rf)[sx <span class="sc">==</span> <span class="dv">1</span>]), <span class="fu">mean</span>(<span class="fu">slope10</span>(ice_glm)[sx <span class="sc">==</span> <span class="dv">1</span>]),</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>                            <span class="fu">mean</span>(<span class="fu">slope10</span>(ice_tru)[sx <span class="sc">==</span> <span class="dv">1</span>])), <span class="dv">4</span>),</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>           <span class="at">PDP_all =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="dv">10</span> <span class="sc">*</span> <span class="fu">coef</span>(<span class="fu">lm</span>(<span class="fu">colMeans</span>(ice_rf) <span class="sc">~</span> g_age))[<span class="dv">2</span>],</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>                             <span class="dv">10</span> <span class="sc">*</span> <span class="fu">coef</span>(<span class="fu">lm</span>(<span class="fu">colMeans</span>(ice_glm) <span class="sc">~</span> g_age))[<span class="dv">2</span>],</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>                             <span class="dv">10</span> <span class="sc">*</span> <span class="fu">coef</span>(<span class="fu">lm</span>(<span class="fu">colMeans</span>(ice_tru) <span class="sc">~</span> g_age))[<span class="dv">2</span>]), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                  model female   male PDP_all
+1         random forest 0.0496 0.0669  0.0589
+2 GLM splines + age:sex 0.0065 0.1378  0.0774
+3                 truth 0.0000 0.1229  0.0663</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>ic <span class="ot">&lt;-</span> <span class="fu">rbind</span>(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">id =</span> <span class="fu">rep</span>(<span class="fu">seq_along</span>(ice_idx), <span class="fu">length</span>(g_age)), <span class="at">age =</span> <span class="fu">rep</span>(g_age, <span class="at">each =</span> <span class="fu">length</span>(ice_idx)),</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>             <span class="at">p =</span> <span class="fu">as.vector</span>(ice_rf),  <span class="at">sex =</span> <span class="fu">rep</span>(<span class="fu">ifelse</span>(sx <span class="sc">==</span> <span class="dv">1</span>, <span class="st">"male"</span>, <span class="st">"female"</span>), <span class="fu">length</span>(g_age)),</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>             <span class="at">model =</span> <span class="st">"random forest"</span>),</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">id =</span> <span class="fu">rep</span>(<span class="fu">seq_along</span>(ice_idx), <span class="fu">length</span>(g_age)), <span class="at">age =</span> <span class="fu">rep</span>(g_age, <span class="at">each =</span> <span class="fu">length</span>(ice_idx)),</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">p =</span> <span class="fu">as.vector</span>(ice_glm), <span class="at">sex =</span> <span class="fu">rep</span>(<span class="fu">ifelse</span>(sx <span class="sc">==</span> <span class="dv">1</span>, <span class="st">"male"</span>, <span class="st">"female"</span>), <span class="fu">length</span>(g_age)),</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">model =</span> <span class="st">"GLM splines + age:sex"</span>))</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>ic<span class="sc">$</span>model <span class="ot">&lt;-</span> <span class="fu">factor</span>(ic<span class="sc">$</span>model, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"random forest"</span>, <span class="st">"GLM splines + age:sex"</span>))</span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>pd <span class="ot">&lt;-</span> <span class="fu">aggregate</span>(p <span class="sc">~</span> age <span class="sc">+</span> model, <span class="at">data =</span> ic, <span class="at">FUN =</span> mean)</span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(ic, <span class="fu">aes</span>(age, p)) <span class="sc">+</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">group =</span> id, <span class="at">colour =</span> sex), <span class="at">alpha =</span> .<span class="dv">25</span>, <span class="at">linewidth =</span> .<span class="dv">35</span>) <span class="sc">+</span></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">data =</span> pd, <span class="at">colour =</span> <span class="st">"black"</span>, <span class="at">linewidth =</span> <span class="fl">1.1</span>) <span class="sc">+</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> model) <span class="sc">+</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="at">female =</span> <span class="st">"#2e8b7a"</span>, <span class="at">male =</span> <span class="st">"#d1495b"</span>)) <span class="sc">+</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">guides</span>(<span class="at">colour =</span> <span class="fu">guide_legend</span>(<span class="at">override.aes =</span> <span class="fu">list</span>(<span class="at">alpha =</span> <span class="dv">1</span>, <span class="at">linewidth =</span> <span class="dv">1</span>))) <span class="sc">+</span></span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"age (set for every patient)"</span>, <span class="at">y =</span> <span class="st">"predicted risk"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"thin lines = ICE (one patient each); thick = PDP (their average)"</span>) <span class="sc">+</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"bottom"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-9-1.png" class="img-fluid figure-img" width="729"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>진실은 <strong>여성 0, 남성 +0.1229</strong> (10년당 위험 증가)</li>
+<li>age:sex를 넣은 GLM의 ICE는 <strong>여성 0.0065, 남성 0.1378</strong> — 두 무리가 뚜렷이 갈립니다(오른쪽 그림)</li>
+<li>random forest는 <strong>여성 0.0496, 남성 0.0669</strong> — 나이 효과를 남녀에게 <strong>비슷하게 퍼뜨렸습니다</strong>. 트리가 이 매끄러운 상호작용을 제대로 배우지 못한 것입니다</li>
+<li>✅ <strong>PDP 하나만 보면 둘 다 “나이가 들수록 위험 증가”로 보입니다.</strong> ICE를 그려야 “누구에게”가 보입니다</li>
+<li>⚠️ 그리고 <strong>ICE가 보여주는 것은 모델이 배운 것이지 진실이 아닙니다.</strong> random forest의 ICE를 보고 “여성도 나이 효과가 있다”고 쓰면 틀립니다</li>
+</ul>
+</section>
+<section id="pdp의-가정과-ale" class="level3">
+<h3 class="anchored" data-anchor-id="pdp의-가정과-ale">4) PDP의 가정과 ALE</h3>
+<p>PDP는 <span class="math inline">\(x_S\)</span> 를 바꿀 때 나머지 변수가 <strong>그대로라고</strong> 가정합니다. 변수끼리 상관되어 있으면 “BMI 18인데 체중은 100 kg” 같은 <strong>존재하지 않는 조합</strong>에서 예측을 평균하게 됩니다.</p>
+<p><strong>ALE (Accumulated Local Effects)</strong> 는 <span class="math inline">\(x_S\)</span> 의 작은 구간 안에 <strong>실제로 있는 샘플만</strong> 써서 예측의 국소 변화량을 누적합니다. 상관된 변수가 있을 때 PDP 대신 권장됩니다 (Apley &amp; Zhu 2020, R <code>ALEPlot</code>/<code>iml</code>).</p>
+<hr>
+</section>
+</section>
+<section id="shap" class="level2">
+<h2 class="anchored" data-anchor-id="shap">4. SHAP 🧮</h2>
+<section id="shapley-value" class="level3">
+<h3 class="anchored" data-anchor-id="shapley-value">1) Shapley value</h3>
+<p>협력 게임 이론에서 온 개념입니다. feature들이 “팀”이 되어 예측값을 만들었을 때, <strong>각자의 공헌을 공정하게 나누는</strong> 방법.</p>
+<p><span class="math display">\[\phi_j = \sum_{S \subseteq F \setminus \{j\}} \frac{|S|!\,(|F|-|S|-1)!}{|F|!}\Big[v(S \cup \{j\}) - v(S)\Big]\]</span></p>
+<p><span class="math inline">\(v(S)\)</span> = feature 집합 <span class="math inline">\(S\)</span> 만 “알고” 나머지는 배경 데이터로 채웠을 때의 예측. 즉 <strong><span class="math inline">\(j\)</span> 가 들어오기 전후의 예측 차이를, 모든 가능한 등장 순서에 대해 평균</strong>한 것입니다.</p>
+<p><strong>네 가지 성질</strong> — 이 성질을 모두 만족하는 분배 방법은 Shapley value 하나뿐입니다</p>
+<ul>
+<li><strong>Efficiency</strong> — <span class="math inline">\(\sum_j \phi_j = f(\mathbf{x}) - \mathbb{E}[f(\mathbf{X})]\)</span>. 기여의 합이 정확히 “평균 대비 이 예측의 차이”</li>
+<li><strong>Symmetry</strong> — 같은 기여를 하는 두 feature는 같은 값</li>
+<li><strong>Dummy</strong> — 예측에 아무 영향이 없는 feature는 0</li>
+<li><strong>Additivity</strong> — 모델 두 개의 합을 설명하면 각 설명의 합</li>
+</ul>
+</section>
+<section id="실습-순열-샘플링으로-구현하기" class="level3">
+<h3 class="anchored" data-anchor-id="실습-순열-샘플링으로-구현하기">2) 🧪 실습: 순열 샘플링으로 구현하기</h3>
+<p>모든 부분집합(<span class="math inline">\(2^p\)</span>)을 다 도는 대신, <strong>무작위 순서</strong>를 뽑아 feature를 하나씩 배경값에서 실제값으로 바꿔 가며 예측이 얼마나 변하는지 잽니다 (Štrumbelj &amp; Kononenko 2014).</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>shap_perm <span class="ot">&lt;-</span> <span class="cf">function</span>(pred_fun, x, bg, feats, <span class="at">M =</span> <span class="dv">200</span>) {</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  p <span class="ot">&lt;-</span> <span class="fu">length</span>(feats); rows <span class="ot">&lt;-</span> <span class="fu">vector</span>(<span class="st">"list"</span>, M); perms <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="dv">0</span>L, M, p)</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (m <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>M) {</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    z <span class="ot">&lt;-</span> bg[<span class="fu">sample</span>(<span class="fu">nrow</span>(bg), <span class="dv">1</span>), feats]; pi <span class="ot">&lt;-</span> <span class="fu">sample</span>(p); perms[m, ] <span class="ot">&lt;-</span> pi</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    h <span class="ot">&lt;-</span> z[<span class="fu">rep</span>(<span class="dv">1</span>, p <span class="sc">+</span> <span class="dv">1</span>), ]                                <span class="co"># 배경 샘플에서 출발</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> (k <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>p) h[(k <span class="sc">+</span> <span class="dv">1</span>)<span class="sc">:</span>(p <span class="sc">+</span> <span class="dv">1</span>), feats[pi[k]]] <span class="ot">&lt;-</span> x[[feats[pi[k]]]]   <span class="co"># 순서대로 x 값으로 교체</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    rows[[m]] <span class="ot">&lt;-</span> h</span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>  f <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">pred_fun</span>(<span class="fu">do.call</span>(rbind, rows)), p <span class="sc">+</span> <span class="dv">1</span>)       <span class="co"># 한 번에 예측 : (p+1) x M</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>  phi <span class="ot">&lt;-</span> <span class="fu">setNames</span>(<span class="fu">numeric</span>(p), feats)</span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (m <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>M) phi[feats[perms[m, ]]] <span class="ot">&lt;-</span> phi[feats[perms[m, ]]] <span class="sc">+</span> <span class="fu">diff</span>(f[, m])</span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">list</span>(<span class="at">phi =</span> phi <span class="sc">/</span> M, <span class="at">f_x =</span> f[p <span class="sc">+</span> <span class="dv">1</span>, <span class="dv">1</span>], <span class="at">base =</span> <span class="fu">mean</span>(f[<span class="dv">1</span>, ]))</span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p><strong>검증</strong> — 선형 모형(log-odds 척도)에서 Shapley value는 닫힌 해가 있습니다: <span class="math inline">\(\phi_j = \beta_j\,(x_j - \mathbb{E}[x_j])\)</span>.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">6</span>); bg <span class="ot">&lt;-</span> tr[<span class="fu">sample</span>(<span class="fu">nrow</span>(tr), <span class="dv">200</span>), ]            <span class="co"># 배경(기준) 데이터</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">7</span>)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>s_lin  <span class="ot">&lt;-</span> <span class="fu">shap_perm</span>(<span class="cf">function</span>(d) <span class="fu">predict</span>(m_lin, d), te[<span class="dv">1</span>, ], bg, feats, <span class="at">M =</span> <span class="dv">2000</span>)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>closed <span class="ot">&lt;-</span> <span class="fu">coef</span>(m_lin)[feats] <span class="sc">*</span> (<span class="fu">unlist</span>(te[<span class="dv">1</span>, feats]) <span class="sc">-</span> <span class="fu">colMeans</span>(bg[feats]))</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(<span class="fu">rbind</span>(<span class="at">permutation_sampling =</span> s_lin<span class="sc">$</span>phi, <span class="at">closed_form =</span> closed), <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                         age   male    lcrp  lcrp2     bmi    sbp  lab_x   flag
+permutation_sampling -0.3541 0.0472 -1.6233 0.1754 -0.0260 0.1443 0.0150 0.0164
+closed_form          -0.3518 0.0480 -1.6211 0.1754 -0.0265 0.1438 0.0158 0.0167</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">max_abs_diff =</span> <span class="fu">signif</span>(<span class="fu">max</span>(<span class="fu">abs</span>(s_lin<span class="sc">$</span>phi <span class="sc">-</span> closed)), <span class="dv">3</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>max_abs_diff 
+     0.00227 </code></pre>
+</div>
+</div>
+<ul>
+<li>순열 2000개로 닫힌 해와 <strong>몬테카를로 오차 수준에서</strong> 일치합니다</li>
+<li>✅ 선형 모형에서 SHAP은 “계수 × 평균에서 벗어난 정도”일 뿐입니다. SHAP은 이것을 <strong>아무 모델에나</strong> 일반화한 것입니다</li>
+</ul>
+</section>
+<section id="실습-한-환자의-예측-뜯어보기-local" class="level3">
+<h3 class="anchored" data-anchor-id="실습-한-환자의-예측-뜯어보기-local">3) 🧪 실습: 한 환자의 예측 뜯어보기 (local)</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>ip <span class="ot">&lt;-</span> <span class="fu">which.max</span>(<span class="fu">pf</span>(te[<span class="dv">1</span><span class="sc">:</span><span class="dv">200</span>, ]))                           <span class="co"># 처음 200명 중 가장 위험한 환자</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">8</span>)</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>s1 <span class="ot">&lt;-</span> <span class="fu">shap_perm</span>(pf, te[ip, ], bg, feats, <span class="at">M =</span> <span class="dv">300</span>)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>te[ip, feats]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>        age male     lcrp    lcrp2      bmi      sbp      lab_x flag
+126 65.3758    0 1.271866 1.086568 18.34429 161.3275 -0.0247364    0</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">prediction =</span> <span class="fu">round</span>(s1<span class="sc">$</span>f_x, <span class="dv">4</span>), <span class="at">base =</span> <span class="fu">round</span>(s1<span class="sc">$</span>base, <span class="dv">4</span>),</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">base_plus_sum_phi =</span> <span class="fu">round</span>(s1<span class="sc">$</span>base <span class="sc">+</span> <span class="fu">sum</span>(s1<span class="sc">$</span>phi), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>       prediction              base base_plus_sum_phi 
+           0.7950            0.3754            0.7950 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(<span class="fu">sort</span>(s1<span class="sc">$</span>phi, <span class="at">decreasing =</span> <span class="cn">TRUE</span>), <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>    bmi    lcrp     sbp   lcrp2     age   lab_x    male    flag 
+ 0.3227  0.0358  0.0336  0.0218  0.0062  0.0006  0.0000 -0.0012 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>sl <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">feature =</span> <span class="fu">names</span>(s1<span class="sc">$</span>phi), <span class="at">phi =</span> s1<span class="sc">$</span>phi,</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>                 <span class="at">val =</span> <span class="fu">sapply</span>(<span class="fu">names</span>(s1<span class="sc">$</span>phi), <span class="cf">function</span>(v) <span class="fu">format</span>(<span class="fu">round</span>(te[ip, v], <span class="dv">1</span>))))</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>sl<span class="sc">$</span>label <span class="ot">&lt;-</span> <span class="fu">paste0</span>(sl<span class="sc">$</span>feature, <span class="st">" = "</span>, sl<span class="sc">$</span>val)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>sl<span class="sc">$</span>label <span class="ot">&lt;-</span> <span class="fu">factor</span>(sl<span class="sc">$</span>label, <span class="at">levels =</span> sl<span class="sc">$</span>label[<span class="fu">order</span>(sl<span class="sc">$</span>phi)])</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(sl, <span class="fu">aes</span>(phi, label, <span class="at">fill =</span> phi <span class="sc">&gt;</span> <span class="dv">0</span>)) <span class="sc">+</span> <span class="fu">geom_col</span>(<span class="at">width =</span> .<span class="dv">7</span>) <span class="sc">+</span></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="dv">0</span>, <span class="at">colour =</span> <span class="st">"grey40"</span>) <span class="sc">+</span></span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_fill_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"TRUE"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>, <span class="st">"FALSE"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>), <span class="at">guide =</span> <span class="st">"none"</span>) <span class="sc">+</span></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"SHAP value (change in predicted risk)"</span>, <span class="at">y =</span> <span class="cn">NULL</span>,</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="fu">paste0</span>(<span class="st">"base "</span>, <span class="fu">round</span>(s1<span class="sc">$</span>base, <span class="dv">3</span>), <span class="st">" + sum of SHAP = prediction "</span>, <span class="fu">round</span>(s1<span class="sc">$</span>f_x, <span class="dv">3</span>))) <span class="sc">+</span></span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>이 환자의 예측 위험은 <strong>0.795</strong>, 배경 평균은 0.3754 — 그 차이를 feature별로 나눈 것이 SHAP입니다</li>
+<li>기준값 + SHAP 합 = 예측이 <strong>정확히</strong> 맞습니다 (efficiency)</li>
+<li>가장 큰 기여는 CRP가 아니라 <strong>BMI 18.3</strong>(저체중)입니다. U자의 왼쪽 끝이 이 환자의 위험을 끌어올렸습니다</li>
+<li>✅ 전역 중요도로는 알 수 없는 <strong>“이 환자는 왜?”</strong>에 답하는 것이 local 설명입니다</li>
+</ul>
+</section>
+<section id="실습-전역-요약-100명의-shap" class="level3">
+<h3 class="anchored" data-anchor-id="실습-전역-요약-100명의-shap">4) 🧪 실습: 전역 요약 — 100명의 SHAP</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">9</span>)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>ex <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">nrow</span>(te), <span class="dv">100</span>)</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>S  <span class="ot">&lt;-</span> <span class="fu">t</span>(<span class="fu">sapply</span>(ex, <span class="cf">function</span>(i) <span class="fu">shap_perm</span>(pf, te[i, ], bg, feats, <span class="at">M =</span> <span class="dv">100</span>)<span class="sc">$</span>phi))</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">feature =</span> feats,</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>           <span class="at">mean_abs_SHAP =</span> <span class="fu">round</span>(<span class="fu">colMeans</span>(<span class="fu">abs</span>(S)), <span class="dv">4</span>),</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">perm_AUC_drop_test =</span> <span class="fu">round</span>(pi_test, <span class="dv">4</span>),</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>           <span class="at">true_effect =</span> imp_tab<span class="sc">$</span>true_effect, <span class="at">row.names =</span> <span class="cn">NULL</span>)[<span class="fu">order</span>(<span class="sc">-</span><span class="fu">colMeans</span>(<span class="fu">abs</span>(S))), ]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  feature mean_abs_SHAP perm_AUC_drop_test     true_effect
+5     bmi        0.1068             0.1283   yes (U-shape)
+3    lcrp        0.0800             0.0581             yes
+1     age        0.0452             0.0233 yes (male only)
+4   lcrp2        0.0259             0.0013      no (proxy)
+6     sbp        0.0202             0.0042      yes (weak)
+7   lab_x        0.0090             0.0000              no
+2    male        0.0045             0.0030   yes (via age)
+8    flag        0.0013            -0.0001              no</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>bs <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(feats, <span class="cf">function</span>(v) <span class="fu">data.frame</span>(<span class="at">feature =</span> v, <span class="at">phi =</span> S[, v],</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>          <span class="at">val =</span> <span class="fu">rank</span>(te[ex, v]) <span class="sc">/</span> <span class="fu">length</span>(ex))))                 <span class="co"># 색 = feature 값의 상대 순위</span></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>bs<span class="sc">$</span>feature <span class="ot">&lt;-</span> <span class="fu">factor</span>(bs<span class="sc">$</span>feature, <span class="at">levels =</span> feats[<span class="fu">order</span>(<span class="fu">colMeans</span>(<span class="fu">abs</span>(S)))])</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">10</span>)</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(bs, <span class="fu">aes</span>(phi, feature, <span class="at">colour =</span> val)) <span class="sc">+</span></span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="dv">0</span>, <span class="at">colour =</span> <span class="st">"grey60"</span>) <span class="sc">+</span></span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_jitter</span>(<span class="at">height =</span> .<span class="dv">18</span>, <span class="at">width =</span> <span class="dv">0</span>, <span class="at">size =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_gradient</span>(<span class="at">low =</span> <span class="st">"#2e8b7a"</span>, <span class="at">high =</span> <span class="st">"#d1495b"</span>, <span class="at">breaks =</span> <span class="fu">c</span>(.<span class="dv">1</span>, .<span class="dv">9</span>), <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">"low"</span>, <span class="st">"high"</span>)) <span class="sc">+</span></span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"SHAP value (change in predicted risk)"</span>, <span class="at">y =</span> <span class="cn">NULL</span>, <span class="at">colour =</span> <span class="st">"feature</span><span class="sc">\n</span><span class="st">value"</span>) <span class="sc">+</span></span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>평균 |SHAP| 순위(bmi → lcrp → age)가 permutation importance와 대체로 같습니다</li>
+<li><strong>bmi 줄에서는 빨강(높음)과 청록(낮음)이 모두 오른쪽</strong>에 있습니다 — U자. 평균 |SHAP| 하나로는 이 모양이 안 보입니다</li>
+<li>⚠️ <strong>lcrp2는 원인이 아닌데도 평균 |SHAP|이 0이 아닙니다.</strong> 모델이 lcrp2를 <strong>쓰고 있기</strong> 때문입니다</li>
+<li>✅ <strong>SHAP은 모델을 설명하지, 세상을 설명하지 않습니다.</strong> “SHAP 값이 크다 = 그 변수를 바꾸면 결과가 바뀐다”는 인과적 해석은 틀릴 수 있습니다</li>
+</ul>
+</section>
+<section id="shap-사용-시-주의" class="level3">
+<h3 class="anchored" data-anchor-id="shap-사용-시-주의">5) SHAP 사용 시 주의</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>함정</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>인과가 아님</strong></td>
+<td>대리 변수·교란 변수도 큰 SHAP을 받습니다 (lcrp2)</td>
+</tr>
+<tr class="even">
+<td><strong>상관된 feature</strong></td>
+<td>기본(interventional) SHAP은 feature를 <strong>독립적으로</strong> 바꿔 넣어 존재하지 않는 조합을 만듭니다. 조건부(observational) SHAP은 신용이 상관된 변수로 번져 나갑니다. <strong>어느 쪽을 썼는지 적을 것</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>척도</strong></td>
+<td>확률 척도냐 log-odds 척도냐에 따라 순위가 달라질 수 있습니다</td>
+</tr>
+<tr class="even">
+<td><strong>배경 데이터</strong></td>
+<td>“평균적인 환자”를 누구로 정하느냐(train 전체? 대조군?)에 따라 값이 바뀝니다</td>
+</tr>
+<tr class="odd">
+<td><strong>계산량</strong></td>
+<td>정확한 계산은 <span class="math inline">\(2^p\)</span>. 트리 모델은 TreeSHAP(<code>xgboost</code>, <code>shap</code>)이 빠르고 정확합니다</td>
+</tr>
+</tbody>
+</table>
+<p><strong>LIME</strong> — 설명하려는 점 <strong>주변에 표본을 흩뿌리고</strong>, 그 근처에서만 맞는 <strong>단순한 선형 모형</strong>을 적합해 계수를 설명으로 씁니다. 빠르고 직관적이지만 이웃의 범위(kernel 폭)에 따라 설명이 크게 흔들려서, 현재는 SHAP이 더 널리 쓰입니다.</p>
+<hr>
+</section>
+</section>
+<section id="해석-가능한-모델-vs-사후-설명" class="level2">
+<h2 class="anchored" data-anchor-id="해석-가능한-모델-vs-사후-설명">5. 해석 가능한 모델 vs 사후 설명 ⚖️</h2>
+<p>Rudin(2019)의 주장 — <strong>고위험 의사결정에서는 블랙박스를 설명하려 하지 말고, 처음부터 해석 가능한 모델을 쓰라.</strong></p>
+<p>1절의 결과를 다시 보면</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>모델</th>
+<th>test AUC</th>
+<th>해석</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>random forest</td>
+<td>0.7481</td>
+<td>사후 설명(SHAP, PDP) 필요. 나이×성별 상호작용을 제대로 못 배움</td>
+</tr>
+<tr class="even">
+<td>logistic + splines</td>
+<td>0.7597</td>
+<td>각 변수의 효과 곡선을 <strong>그대로 그릴 수 있음</strong></td>
+</tr>
+<tr class="odd">
+<td>logistic + splines + age:sex</td>
+<td><strong>0.7678</strong></td>
+<td>상호작용까지 계수로 보임. ICE가 진실과 일치</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>이 데이터에서는 <strong>해석 가능한 모델이 블랙박스보다 낫습니다.</strong> 표 형태의 임상 데이터에서 드문 일이 아닙니다 — 복잡한 모델의 이득은 대개 작습니다 (Christodoulou et al.&nbsp;2019)</li>
+<li>사후 설명은 <strong>근사</strong>입니다. SHAP·PDP가 보여주는 것이 모델이 실제로 하는 일과 어긋날 수 있습니다</li>
+<li>✅ <strong>순서</strong> — 먼저 해석 가능한 모델(정규화 GLM + spline, 얕은 트리, GAM)로 기준선을 세우고, 블랙박스가 <strong>의미 있게</strong> 나을 때만 블랙박스 + 사후 설명으로 갑니다</li>
+<li>영상·서열·단일세포처럼 feature가 원시 신호이고 수가 매우 많을 때는 해석 가능한 모델만으로 부족할 수 있습니다. 그때가 사후 설명이 필요한 자리입니다</li>
+</ul>
+<hr>
+</section>
+<section id="보고-지침" class="level2">
+<h2 class="anchored" data-anchor-id="보고-지침">6. 보고 지침 📋</h2>
+<section id="tripodai" class="level3">
+<h3 class="anchored" data-anchor-id="tripodai">1) TRIPOD+AI</h3>
+<ul>
+<li><strong>TRIPOD</strong>(2015)는 예측 모형 개발·검증 연구의 보고 지침입니다. <strong>TRIPOD+AI</strong>(Collins et al., <em>BMJ</em> 2024)는 회귀와 머신러닝을 모두 포괄하도록 개정된 <strong>27개 항목</strong> 체크리스트이고, 초록용 체크리스트가 따로 있습니다</li>
+<li>임상 예측 모형 논문을 투고하면 많은 저널이 이 체크리스트 제출을 요구합니다</li>
+</ul>
+<p>이 과목과 직접 연결되는 핵심 요구사항을 추리면</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>영역</th>
+<th>보고할 것</th>
+<th>이 과목</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>데이터</strong></td>
+<td>출처, 기간, 포함·제외 기준, 결측 처리, 표본 크기의 근거</td>
+<td>W2</td>
+</tr>
+<tr class="even">
+<td><strong>결과 정의</strong></td>
+<td>무엇을 언제 어떻게 판정했는지, 예측변수 측정과 눈가림</td>
+<td>—</td>
+</tr>
+<tr class="odd">
+<td><strong>분석</strong></td>
+<td>전처리, 모델·초매개변수 선택, <strong>내부 검증 방법</strong>(CV, bootstrap)</td>
+<td>W2, W3</td>
+</tr>
+<tr class="even">
+<td><strong>불균형</strong></td>
+<td>재표본(over/undersampling, SMOTE) 여부와 방법</td>
+<td>W6</td>
+</tr>
+<tr class="odd">
+<td><strong>성능</strong></td>
+<td><strong>discrimination과 calibration을 함께</strong>, 신뢰구간 포함</td>
+<td>W4</td>
+</tr>
+<tr class="even">
+<td><strong>공정성</strong></td>
+<td>성별·연령 등 <strong>하위집단별 성능</strong></td>
+<td>—</td>
+</tr>
+<tr class="odd">
+<td><strong>해석</strong></td>
+<td>설명 방법을 썼다면 무엇을 어떻게</td>
+<td>W14</td>
+</tr>
+<tr class="even">
+<td><strong>공개(open science)</strong></td>
+<td>프로토콜, <strong>데이터·코드 공개</strong>, 모델 자체의 공개</td>
+<td>W14</td>
+</tr>
+<tr class="odd">
+<td><strong>환자·대중 참여</strong></td>
+<td>연구 설계·해석에 환자가 참여했는지</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="실습-auc만-보고하면-놓치는-것-외부-검증" class="level3">
+<h3 class="anchored" data-anchor-id="실습-auc만-보고하면-놓치는-것-외부-검증">2) 🧪 실습: AUC만 보고하면 놓치는 것 — 외부 검증</h3>
+<p>다른 병원 코호트를 만듭니다. <strong>더 고령이고(평균 68세) 기저 위험이 낮습니다</strong>.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>ext <span class="ot">&lt;-</span> <span class="fu">sim_clin</span>(<span class="dv">2000</span>, <span class="dv">3</span>, <span class="at">shift =</span> <span class="sc">-</span><span class="fl">0.8</span>, <span class="at">age_mu =</span> <span class="dv">68</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>cal <span class="ot">&lt;-</span> <span class="cf">function</span>(p, y) {                                   <span class="co"># discrimination + calibration</span></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>  lp <span class="ot">&lt;-</span> <span class="fu">qlogis</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(p, <span class="fl">1e-6</span>), <span class="dv">1</span> <span class="sc">-</span> <span class="fl">1e-6</span>))</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">c</span>(<span class="at">AUC =</span> <span class="fu">auc</span>(p, y), <span class="at">Brier =</span> <span class="fu">mean</span>((p <span class="sc">-</span> y)<span class="sc">^</span><span class="dv">2</span>),</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">cal_intercept =</span> <span class="fu">unname</span>(<span class="fu">coef</span>(<span class="fu">glm</span>(y <span class="sc">~</span> <span class="dv">1</span>, <span class="at">offset =</span> lp, <span class="at">family =</span> binomial))[<span class="dv">1</span>]),  <span class="co"># 0 이 이상적</span></span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">cal_slope =</span> <span class="fu">unname</span>(<span class="fu">coef</span>(<span class="fu">glm</span>(y <span class="sc">~</span> lp, <span class="at">family =</span> binomial))[<span class="dv">2</span>]),                 <span class="co"># 1 이 이상적</span></span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">mean_pred =</span> <span class="fu">mean</span>(p), <span class="at">observed =</span> <span class="fu">mean</span>(y))</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>p_glm_te <span class="ot">&lt;-</span> <span class="fu">predict</span>(m_int, te, <span class="at">type =</span> <span class="st">"response"</span>); p_glm_ex <span class="ot">&lt;-</span> <span class="fu">predict</span>(m_int, ext, <span class="at">type =</span> <span class="st">"response"</span>)</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>p_rf_te  <span class="ot">&lt;-</span> <span class="fu">pf</span>(te);                                 p_rf_ex  <span class="ot">&lt;-</span> <span class="fu">pf</span>(ext)</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a><span class="fu">cbind</span>(<span class="fu">data.frame</span>(<span class="at">model =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">"GLM splines + age:sex"</span>, <span class="st">"random forest"</span>), <span class="dv">2</span>),</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>                 <span class="at">cohort =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">"internal test"</span>, <span class="st">"external"</span>), <span class="at">each =</span> <span class="dv">2</span>)),</span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>      <span class="fu">round</span>(<span class="fu">rbind</span>(<span class="fu">cal</span>(p_glm_te, te<span class="sc">$</span>y), <span class="fu">cal</span>(p_rf_te, te<span class="sc">$</span>y), <span class="fu">cal</span>(p_glm_ex, ext<span class="sc">$</span>y), <span class="fu">cal</span>(p_rf_ex, ext<span class="sc">$</span>y)), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                  model        cohort    AUC  Brier cal_intercept cal_slope
+1 GLM splines + age:sex internal test 0.7678 0.1840        0.0487    0.8517
+2         random forest internal test 0.7481 0.1935        0.0624    1.0898
+3 GLM splines + age:sex      external 0.8092 0.1738       -0.9244    0.8863
+4         random forest      external 0.7786 0.1808       -0.6790    1.2334
+  mean_pred observed
+1    0.3827    0.391
+2    0.3786    0.391
+3    0.4338    0.288
+4    0.4168    0.288</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>calbin <span class="ot">&lt;-</span> <span class="cf">function</span>(p, y, model, cohort) {</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>  b <span class="ot">&lt;-</span> <span class="fu">cut</span>(p, <span class="fu">quantile</span>(p, <span class="dv">0</span><span class="sc">:</span><span class="dv">10</span> <span class="sc">/</span> <span class="dv">10</span>), <span class="at">include.lowest =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">pred =</span> <span class="fu">tapply</span>(p, b, mean), <span class="at">obs =</span> <span class="fu">tapply</span>(y, b, mean), <span class="at">model =</span> model, <span class="at">cohort =</span> cohort)</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>cb <span class="ot">&lt;-</span> <span class="fu">rbind</span>(<span class="fu">calbin</span>(p_glm_te, te<span class="sc">$</span>y, <span class="st">"GLM splines + age:sex"</span>, <span class="st">"internal test"</span>),</span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>            <span class="fu">calbin</span>(p_rf_te,  te<span class="sc">$</span>y, <span class="st">"random forest"</span>,         <span class="st">"internal test"</span>),</span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>            <span class="fu">calbin</span>(p_glm_ex, ext<span class="sc">$</span>y, <span class="st">"GLM splines + age:sex"</span>, <span class="st">"external"</span>),</span>
+<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>            <span class="fu">calbin</span>(p_rf_ex,  ext<span class="sc">$</span>y, <span class="st">"random forest"</span>,         <span class="st">"external"</span>))</span>
+<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>cb<span class="sc">$</span>cohort <span class="ot">&lt;-</span> <span class="fu">factor</span>(cb<span class="sc">$</span>cohort, <span class="at">levels =</span> <span class="fu">c</span>(<span class="st">"internal test"</span>, <span class="st">"external"</span>))</span>
+<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(cb, <span class="fu">aes</span>(pred, obs, <span class="at">colour =</span> model)) <span class="sc">+</span></span>
+<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">linetype =</span> <span class="dv">2</span>, <span class="at">colour =</span> <span class="st">"grey50"</span>) <span class="sc">+</span></span>
+<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">8</span>) <span class="sc">+</span> <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.8</span>) <span class="sc">+</span></span>
+<span id="cb35-13"><a href="#cb35-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> cohort) <span class="sc">+</span> <span class="fu">coord_equal</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>)) <span class="sc">+</span></span>
+<span id="cb35-14"><a href="#cb35-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"GLM splines + age:sex"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>, <span class="st">"random forest"</span> <span class="ot">=</span> <span class="st">"#d1495b"</span>)) <span class="sc">+</span></span>
+<span id="cb35-15"><a href="#cb35-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"mean predicted risk (decile)"</span>, <span class="at">y =</span> <span class="st">"observed event rate"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>) <span class="sc">+</span></span>
+<span id="cb35-16"><a href="#cb35-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span> <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"bottom"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid figure-img" width="729"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>외부 코호트에서 <strong>AUC는 오히려 올랐습니다</strong>(GLM 0.7678 → 0.8092). 고령 환자가 섞여 위험의 폭이 넓어졌기 때문입니다</li>
+<li>그런데 <strong>평균 예측 0.4338 vs 실제 0.288</strong> — 모든 환자의 위험을 부풀립니다. calibration intercept <strong>-0.9244</strong>(이상적으로 0)</li>
+<li>AUC만 보고했다면 “외부에서도 잘 된다”고 결론 내렸을 것입니다. 이 모델로 “위험 40% 이상은 입원”을 정하면 <strong>불필요한 입원이 쏟아집니다</strong></li>
+<li>내부 test에서도 두 모델의 calibration slope가 다릅니다(GLM 0.8517: 약간 과적합, RF 1.0898: 예측이 너무 보수적)</li>
+<li>✅ <strong>discrimination(AUC)은 순서를, calibration은 숫자 자체를 봅니다.</strong> 확률을 임상적으로 쓸 거면 둘 다 필요합니다 (W4)</li>
+<li>✅ 외부 검증에서 calibration이 어긋나면 <strong>재보정(recalibration)</strong> — intercept(과 slope)만 새 코호트에 맞추는 것으로 대부분 해결됩니다</li>
+</ul>
+</section>
+<section id="외부-검증의-의미" class="level3">
+<h3 class="anchored" data-anchor-id="외부-검증의-의미">3) 외부 검증의 의미</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>검증</th>
+<th>데이터</th>
+<th>답하는 질문</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>내부</strong> (CV, bootstrap, 분할)</td>
+<td>같은 출처</td>
+<td>과적합 없이 <strong>이 모집단에서</strong> 작동하는가</td>
+</tr>
+<tr class="even">
+<td><strong>시간적</strong></td>
+<td>같은 병원, 나중 시기</td>
+<td>시간이 지나도 작동하는가</td>
+</tr>
+<tr class="odd">
+<td><strong>지리적 / 외부</strong></td>
+<td>다른 병원·국가</td>
+<td><strong>다른 모집단에</strong> 옮겨 쓸 수 있는가</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ 무작위로 나눈 test set은 <strong>외부 검증이 아닙니다.</strong> 같은 병원 데이터를 7:3으로 나눈 것은 내부 검증입니다.</p>
+</section>
+<section id="실습-재현성-버전과-seed를-남긴다" class="level3">
+<h3 class="anchored" data-anchor-id="실습-재현성-버전과-seed를-남긴다">4) 🧪 실습: 재현성 — 버전과 seed를 남긴다</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>R.version.string</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "R version 4.5.2 (2025-10-31 ucrt)"</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sapply</span>(<span class="fu">c</span>(<span class="st">"rpart"</span>, <span class="st">"splines"</span>, <span class="st">"ggplot2"</span>), <span class="cf">function</span>(p) <span class="fu">as.character</span>(<span class="fu">packageVersion</span>(p)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   rpart  splines  ggplot2 
+"4.1.24"  "4.5.2"  "4.0.3" </code></pre>
+</div>
+</div>
+<ul>
+<li>논문의 Methods나 보충자료에 <strong>R/Python 버전, 패키지 버전, seed</strong>를 적고, 코드는 GitHub + Zenodo DOI로 공개하세요</li>
+<li><code>sessionInfo()</code>(R), <code>pip freeze</code>(Python), <code>renv.lock</code> / <code>environment.yml</code>을 저장소에 같이 두면 재현이 쉬워집니다 (Ch0)</li>
+<li>이 사이트가 GitHub Actions에서 <strong>매번 처음부터 다시 렌더링</strong>되는 것도 같은 이유입니다 — 코드가 실제로 돌아가는지 기계가 매번 확인합니다</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="흔한-실수-체크리스트" class="level2">
+<h2 class="anchored" data-anchor-id="흔한-실수-체크리스트">7. 흔한 실수 체크리스트 🚨</h2>
+<section id="실습-test-set을-여러-번-쓰면" class="level3">
+<h3 class="anchored" data-anchor-id="실습-test-set을-여러-번-쓰면">1) 🧪 실습: test set을 여러 번 쓰면</h3>
+<p><strong>신호가 전혀 없는</strong> 데이터로 후보 모형 200개를 만들고, test AUC가 가장 높은 것을 고릅니다.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">11</span>)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">150</span>; p <span class="ot">&lt;-</span> <span class="dv">30</span></span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>Xtr <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n <span class="sc">*</span> p), n, p);      ytr <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, .<span class="dv">5</span>)       <span class="co"># 신호 없음</span></span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>Xte <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n <span class="sc">*</span> p), n, p);      yte <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, .<span class="dv">5</span>)</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>Xnew <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(<span class="dv">2000</span> <span class="sc">*</span> p), <span class="dv">2000</span>, p); ynew <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(<span class="dv">2000</span>, <span class="dv">1</span>, .<span class="dv">5</span>)   <span class="co"># 새 데이터</span></span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>cand <span class="ot">&lt;-</span> <span class="fu">lapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">200</span>, <span class="cf">function</span>(k) <span class="fu">sample</span>(p, <span class="dv">5</span>))                         <span class="co"># feature 5개짜리 후보 200개</span></span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>fits <span class="ot">&lt;-</span> <span class="fu">lapply</span>(cand, <span class="cf">function</span>(f) <span class="fu">glm</span>(ytr <span class="sc">~</span> Xtr[, f], <span class="at">family =</span> binomial))</span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>score <span class="ot">&lt;-</span> <span class="cf">function</span>(fit, f, X) <span class="fu">as.vector</span>(<span class="fu">cbind</span>(<span class="dv">1</span>, X[, f]) <span class="sc">%*%</span> <span class="fu">coef</span>(fit))</span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>auc_te <span class="ot">&lt;-</span> <span class="fu">mapply</span>(<span class="cf">function</span>(fit, f) <span class="fu">auc</span>(<span class="fu">score</span>(fit, f, Xte), yte), fits, cand)</span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>best <span class="ot">&lt;-</span> <span class="fu">which.max</span>(auc_te)</span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">what =</span> <span class="fu">c</span>(<span class="st">"best of 200, judged on the reused test set"</span>, <span class="st">"that same model on fresh data"</span>,</span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"median of the 200 on the test set"</span>),</span>
+<span id="cb40-13"><a href="#cb40-13" aria-hidden="true" tabindex="-1"></a>           <span class="at">AUC =</span> <span class="fu">round</span>(<span class="fu">c</span>(auc_te[best], <span class="fu">auc</span>(<span class="fu">score</span>(fits[[best]], cand[[best]], Xnew), ynew),</span>
+<span id="cb40-14"><a href="#cb40-14" aria-hidden="true" tabindex="-1"></a>                         <span class="fu">median</span>(auc_te)), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                                        what    AUC
+1 best of 200, judged on the reused test set 0.6166
+2              that same model on fresh data 0.5140
+3          median of the 200 on the test set 0.5123</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(<span class="fu">data.frame</span>(<span class="at">a =</span> auc_te), <span class="fu">aes</span>(a)) <span class="sc">+</span></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="at">bins =</span> <span class="dv">30</span>, <span class="at">fill =</span> <span class="st">"#7d8597"</span>, <span class="at">colour =</span> <span class="st">"white"</span>) <span class="sc">+</span></span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> auc_te[best], <span class="at">colour =</span> <span class="st">"#d1495b"</span>, <span class="at">linewidth =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="fu">auc</span>(<span class="fu">score</span>(fits[[best]], cand[[best]], Xnew), ynew), <span class="at">colour =</span> <span class="st">"#2e8b7a"</span>,</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">linewidth =</span> <span class="dv">1</span>, <span class="at">linetype =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"test AUC of 200 useless models"</span>, <span class="at">y =</span> <span class="st">"count"</span>,</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"red = chosen model on the reused test set; teal dashed = same model on fresh data"</span>) <span class="sc">+</span></span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="14_interpretation_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid figure-img" width="576"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li>아무 신호가 없는데도 200개 중 가장 좋은 것은 test AUC <strong>0.6166</strong>. 새 데이터에서는 <strong>0.5140</strong></li>
+<li>“test set에서 제일 좋은 것을 골라 test 성능을 보고”하면 <strong>선택 자체가 과적합</strong>입니다. 모델·feature·초매개변수를 여러 번 바꿔 보는 모든 과정이 여기에 해당합니다</li>
+<li>✅ test set은 <strong>마지막에 한 번만</strong>. 선택은 CV나 별도 validation set으로 (W3의 nested CV)</li>
+</ul>
+</section>
+<section id="실습-cv-밖에서-feature를-고르면" class="level3">
+<h3 class="anchored" data-anchor-id="실습-cv-밖에서-feature를-고르면">2) 🧪 실습: CV 밖에서 feature를 고르면</h3>
+<p>순수 잡음 2000개, 샘플 100개. 결과와 가장 관련 있어 보이는 10개를 골라 로지스틱 회귀.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">12</span>)</span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">100</span>; p <span class="ot">&lt;-</span> <span class="dv">2000</span></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>X <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n <span class="sc">*</span> p), n, p); y <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, .<span class="dv">5</span>)                  <span class="co"># 신호 없음</span></span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>tstat <span class="ot">&lt;-</span> <span class="cf">function</span>(X, y) <span class="fu">abs</span>(<span class="fu">colMeans</span>(X[y <span class="sc">==</span> <span class="dv">1</span>, ]) <span class="sc">-</span> <span class="fu">colMeans</span>(X[y <span class="sc">==</span> <span class="dv">0</span>, ])) <span class="sc">/</span></span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sqrt</span>(<span class="fu">apply</span>(X[y <span class="sc">==</span> <span class="dv">1</span>, ], <span class="dv">2</span>, var) <span class="sc">/</span> <span class="fu">sum</span>(y <span class="sc">==</span> <span class="dv">1</span>) <span class="sc">+</span> <span class="fu">apply</span>(X[y <span class="sc">==</span> <span class="dv">0</span>, ], <span class="dv">2</span>, var) <span class="sc">/</span> <span class="fu">sum</span>(y <span class="sc">==</span> <span class="dv">0</span>))</span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>fold <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="at">length.out =</span> n))</span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>cv_auc <span class="ot">&lt;-</span> <span class="cf">function</span>(select_inside) {</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>  pr <span class="ot">&lt;-</span> <span class="fu">numeric</span>(n); top_all <span class="ot">&lt;-</span> <span class="fu">order</span>(<span class="fu">tstat</span>(X, y), <span class="at">decreasing =</span> <span class="cn">TRUE</span>)[<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>]</span>
+<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (f <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>) {</span>
+<span id="cb43-10"><a href="#cb43-10" aria-hidden="true" tabindex="-1"></a>    tri <span class="ot">&lt;-</span> fold <span class="sc">!=</span> f</span>
+<span id="cb43-11"><a href="#cb43-11" aria-hidden="true" tabindex="-1"></a>    top <span class="ot">&lt;-</span> <span class="cf">if</span> (select_inside) <span class="fu">order</span>(<span class="fu">tstat</span>(X[tri, ], y[tri]), <span class="at">decreasing =</span> <span class="cn">TRUE</span>)[<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>] <span class="cf">else</span> top_all</span>
+<span id="cb43-12"><a href="#cb43-12" aria-hidden="true" tabindex="-1"></a>    g <span class="ot">&lt;-</span> <span class="fu">suppressWarnings</span>(<span class="fu">glm</span>(y[tri] <span class="sc">~</span> X[tri, top], <span class="at">family =</span> binomial))</span>
+<span id="cb43-13"><a href="#cb43-13" aria-hidden="true" tabindex="-1"></a>    pr[<span class="sc">!</span>tri] <span class="ot">&lt;-</span> <span class="fu">cbind</span>(<span class="dv">1</span>, X[<span class="sc">!</span>tri, top]) <span class="sc">%*%</span> <span class="fu">coef</span>(g)</span>
+<span id="cb43-14"><a href="#cb43-14" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb43-15"><a href="#cb43-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">auc</span>(pr, y)</span>
+<span id="cb43-16"><a href="#cb43-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb43-17"><a href="#cb43-17" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">pipeline =</span> <span class="fu">c</span>(<span class="st">"select top 10 on ALL data, then 5-fold CV"</span>, <span class="st">"select inside each training fold"</span>),</span>
+<span id="cb43-18"><a href="#cb43-18" aria-hidden="true" tabindex="-1"></a>           <span class="at">CV_AUC =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">cv_auc</span>(<span class="cn">FALSE</span>), <span class="fu">cv_auc</span>(<span class="cn">TRUE</span>)), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                                   pipeline CV_AUC
+1 select top 10 on ALL data, then 5-fold CV 0.8642
+2          select inside each training fold 0.4499</code></pre>
+</div>
+</div>
+<ul>
+<li>전체 데이터로 고르고 CV하면 <strong>AUC 0.8642</strong> — 잡음으로 논문 한 편이 나옵니다</li>
+<li>fold 안에서 고르면 <strong>0.4499</strong>, 즉 동전 던지기 수준. 이것이 진실입니다</li>
+<li>✅ <strong>feature 선택·정규화·결측 대치·재표본까지 모든 전처리는 fold 안에서</strong> (W2). 오믹스 바이오마커 논문에서 가장 흔한 오류입니다</li>
+</ul>
+</section>
+<section id="실습-불균형을-무시하면" class="level3">
+<h3 class="anchored" data-anchor-id="실습-불균형을-무시하면">3) 🧪 실습: 불균형을 무시하면</h3>
+<p>유병률을 약 5%로 낮춘 같은 코호트입니다.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>rtr <span class="ot">&lt;-</span> <span class="fu">sim_clin</span>(<span class="dv">3000</span>, <span class="dv">21</span>, <span class="at">shift =</span> <span class="sc">-</span><span class="fl">3.2</span>); rte <span class="ot">&lt;-</span> <span class="fu">sim_clin</span>(<span class="dv">5000</span>, <span class="dv">22</span>, <span class="at">shift =</span> <span class="sc">-</span><span class="fl">3.2</span>)</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>mr <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> <span class="fu">ns</span>(age, <span class="dv">3</span>) <span class="sc">*</span> male <span class="sc">+</span> <span class="fu">ns</span>(lcrp, <span class="dv">3</span>) <span class="sc">+</span> <span class="fu">ns</span>(bmi, <span class="dv">3</span>) <span class="sc">+</span> <span class="fu">ns</span>(sbp, <span class="dv">3</span>), <span class="at">data =</span> rtr, <span class="at">family =</span> binomial)</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>pr <span class="ot">&lt;-</span> <span class="fu">predict</span>(mr, rte, <span class="at">type =</span> <span class="st">"response"</span>)</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>avg_prec <span class="ot">&lt;-</span> <span class="cf">function</span>(p, y) { o <span class="ot">&lt;-</span> <span class="fu">order</span>(p, <span class="at">decreasing =</span> <span class="cn">TRUE</span>); y <span class="ot">&lt;-</span> y[o]; <span class="fu">mean</span>((<span class="fu">cumsum</span>(y) <span class="sc">/</span> <span class="fu">seq_along</span>(y))[y <span class="sc">==</span> <span class="dv">1</span>]) }</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>sens <span class="ot">&lt;-</span> <span class="cf">function</span>(pred, y) <span class="fu">sum</span>(pred <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;</span> y <span class="sc">==</span> <span class="dv">1</span>) <span class="sc">/</span> <span class="fu">sum</span>(y <span class="sc">==</span> <span class="dv">1</span>)</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a><span class="fu">c</span>(<span class="at">prevalence_test =</span> <span class="fu">round</span>(<span class="fu">mean</span>(rte<span class="sc">$</span>y), <span class="dv">4</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>prevalence_test 
+         0.0498 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(<span class="at">classifier =</span> <span class="fu">c</span>(<span class="st">"always predict 0"</span>, <span class="st">"GLM, threshold 0.5"</span>, <span class="st">"GLM, threshold = prevalence"</span>),</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>           <span class="at">accuracy =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">mean</span>(rte<span class="sc">$</span>y <span class="sc">==</span> <span class="dv">0</span>), <span class="fu">mean</span>((pr <span class="sc">&gt;</span> .<span class="dv">5</span>) <span class="sc">==</span> rte<span class="sc">$</span>y), <span class="fu">mean</span>((pr <span class="sc">&gt;</span> <span class="fu">mean</span>(rtr<span class="sc">$</span>y)) <span class="sc">==</span> rte<span class="sc">$</span>y)), <span class="dv">4</span>),</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>           <span class="at">sensitivity =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="dv">0</span>, <span class="fu">sens</span>(<span class="fu">as.integer</span>(pr <span class="sc">&gt;</span> .<span class="dv">5</span>), rte<span class="sc">$</span>y), <span class="fu">sens</span>(<span class="fu">as.integer</span>(pr <span class="sc">&gt;</span> <span class="fu">mean</span>(rtr<span class="sc">$</span>y)), rte<span class="sc">$</span>y)), <span class="dv">4</span>),</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>           <span class="at">AUC =</span> <span class="fu">c</span>(<span class="st">"0.5"</span>, <span class="fu">rep</span>(<span class="fu">format</span>(<span class="fu">round</span>(<span class="fu">auc</span>(pr, rte<span class="sc">$</span>y), <span class="dv">4</span>)), <span class="dv">2</span>)),</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>           <span class="at">PR_AUC =</span> <span class="fu">c</span>(<span class="fu">format</span>(<span class="fu">round</span>(<span class="fu">mean</span>(rte<span class="sc">$</span>y), <span class="dv">4</span>)), <span class="fu">rep</span>(<span class="fu">format</span>(<span class="fu">round</span>(<span class="fu">avg_prec</span>(pr, rte<span class="sc">$</span>y), <span class="dv">4</span>)), <span class="dv">2</span>)))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                   classifier accuracy sensitivity    AUC PR_AUC
+1            always predict 0   0.9502      0.0000    0.5 0.0498
+2          GLM, threshold 0.5   0.9538      0.1606 0.8189 0.3586
+3 GLM, threshold = prevalence   0.7770      0.6867 0.8189 0.3586</code></pre>
+</div>
+</div>
+<ul>
+<li><strong>“모두 음성”이라고 찍기만 해도 정확도 0.9502</strong> — 모델(0.9538)과 거의 같습니다</li>
+<li>임계값 0.5를 그대로 쓰면 환자의 <strong>16%만</strong> 잡습니다. 유병률 근처로 낮추면 정확도는 0.7770으로 떨어지지만 민감도 <strong>0.6867</strong></li>
+<li>PR-AUC의 기준선은 0.5가 아니라 <strong>유병률(0.0498)</strong>입니다. 모델의 0.3586은 낮아 보이지만 기준선보다 훨씬 높습니다 — 기준선을 같이 보고해야 의미가 있습니다</li>
+<li>✅ 불균형 데이터에서는 <strong>정확도를 주 지표로 쓰지 말고</strong>, AUC와 PR-AUC, 임상적으로 정한 임계값에서의 민감도·특이도를 보고 (W4, W6)</li>
+</ul>
+</section>
+<section id="체크리스트" class="level3">
+<h3 class="anchored" data-anchor-id="체크리스트">4) 체크리스트</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>단계</th>
+<th>확인할 것</th>
+<th>챕터</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>설계</td>
+<td>결과 정의·예측 시점이 명확한가? 예측 시점 <strong>이후</strong> 정보가 feature에 섞이지 않았나?</td>
+<td>W2</td>
+</tr>
+<tr class="even">
+<td>분할</td>
+<td>같은 환자·같은 배치가 train과 test에 동시에 있지 않나? (group split)</td>
+<td>W3</td>
+</tr>
+<tr class="odd">
+<td>전처리</td>
+<td>정규화·대치·feature 선택·재표본이 <strong>모두 fold 안</strong>인가?</td>
+<td>W2, W6</td>
+</tr>
+<tr class="even">
+<td>선택</td>
+<td>test set을 모델 선택에 쓰지 않았나? 초매개변수는 nested CV로 골랐나?</td>
+<td>W3</td>
+</tr>
+<tr class="odd">
+<td>지표</td>
+<td>AUC <strong>와</strong> calibration, 불균형이면 PR-AUC까지, <strong>신뢰구간</strong>과 함께</td>
+<td>W4</td>
+</tr>
+<tr class="even">
+<td>기준선</td>
+<td>단순한 모델(로지스틱)과 비교했나? 복잡한 모델의 이득이 의미 있는가?</td>
+<td>W5, W14</td>
+</tr>
+<tr class="odd">
+<td>해석</td>
+<td>중요도는 test 데이터로? 상관된 변수를 고려했나? 인과적 표현을 피했나?</td>
+<td>W14</td>
+</tr>
+<tr class="even">
+<td>검증</td>
+<td>외부(다른 병원·시기) 검증이 있나? 하위집단별 성능은?</td>
+<td>W14</td>
+</tr>
+<tr class="odd">
+<td>공개</td>
+<td>코드·seed·버전·(가능하면) 데이터와 모델을 공개했나?</td>
+<td>W14</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+⚠️ 해석 결과를 논문에 쓸 때
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>“X가 결과의 원인이다” 대신 “모델은 X에 가장 크게 의존했다”</strong>라고 쓰세요. 중요도·SHAP은 연관이지 인과가 아닙니다</li>
+<li><strong>불순도 기반 중요도만 보고하지 말 것</strong> — 연속형·다범주 변수에 편향되어 있습니다. test 데이터의 permutation importance나 SHAP을 함께</li>
+<li><strong>상관된 변수 묶음</strong>은 개별이 아니라 <strong>묶음으로</strong> 해석하고, 그렇게 했다고 적을 것</li>
+<li>SHAP을 썼다면 <strong>배경 데이터, 척도(확률/log-odds), interventional/conditional 여부</strong>를 명시</li>
+<li>PDP에는 <strong>데이터 분포(rug)를 같이</strong> 그리고, 데이터가 드문 구간의 모양은 해석하지 말 것</li>
+<li>해석 가능한 모델과 <strong>성능을 나란히 보고</strong>하세요. 블랙박스를 쓴 이유가 성능이라면 그 차이를 숫자로 보여야 합니다</li>
+</ul>
+</div>
+</div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this ends up
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>permutation importance와 W9 random forest의 OOB importance는 같은 발상입니다</li>
+<li>calibration과 Brier score → W4, class imbalance와 재표본 → W6</li>
+<li>누수와 fold 안의 전처리 → W2, nested CV와 test set 한 번만 → W3</li>
+<li>Bayes 상한(진짜 확률의 AUC 0.7711) → W11</li>
+<li><strong>W15 프로젝트</strong> — 이 챕터의 체크리스트를 그대로 제출물 평가 기준으로 씁니다. “검증 설계의 타당성 &gt; 최종 성능 수치”</li>
+</ul>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">📝 Summary</h2>
+<ul>
+<li>해석은 <strong>디버깅, 과학적 발견, 신뢰, 개인별 설명</strong>을 위해 합니다. 진짜 규칙을 아는 모의 데이터로 설명 도구를 검증했습니다</li>
+<li><strong>불순도 중요도는 효과 없는 연속형 변수(lab_x 0.052)를 실제 효과가 있는 변수(male 0.017)보다 높게</strong> 봅니다. test set의 permutation importance는 0.0000</li>
+<li>permutation importance를 <strong>train으로 재면</strong> 잡음 변수도 0.0173으로 부풀려집니다</li>
+<li><strong>상관된 변수</strong> — 하나씩 섞으면 lcrp 0.0560 / lcrp2 -0.0014, 함께 섞으면 0.0931. 하나를 빼고 재학습하면 다른 하나가 대신해 거의 0</li>
+<li><strong>PDP</strong>는 BMI의 U자를 되찾지만(상관 0.955) 데이터가 드문 양 끝을 과소평가합니다(0.683 vs 0.891)</li>
+<li><strong>ICE</strong>는 PDP가 가린 개인차를 보여줍니다. age:sex GLM은 여성 0.0065 / 남성 0.1378(진실 0 / 0.1229), random forest는 0.0496 / 0.0669로 효과를 퍼뜨렸습니다 — <strong>ICE는 모델이 배운 것을 보여줍니다</strong></li>
+<li><strong>SHAP</strong> — Shapley value로 예측을 기여로 분해. efficiency로 기준값 + 합 = 예측. 선형 모형에서는 <span class="math inline">\(\beta_j(x_j - \bar{x}_j)\)</span> 와 일치</li>
+<li>한 환자(예측 0.795)의 가장 큰 기여는 CRP가 아니라 <strong>BMI 18.3</strong> — local 설명의 가치</li>
+<li><strong>SHAP은 모델을 설명하지 세상을 설명하지 않습니다</strong> — 원인이 아닌 lcrp2도 기여를 받습니다</li>
+<li>이 데이터에서 <strong>해석 가능한 GLM(0.7678)이 random forest(0.7481)보다 낫습니다.</strong> 해석 가능한 모델로 기준선을 먼저</li>
+<li><strong>TRIPOD+AI</strong> — 27개 항목(BMJ 2024). discrimination과 calibration, 공정성, 코드·데이터 공개</li>
+<li>외부 코호트에서 <strong>AUC는 0.8092로 올랐지만 평균 예측 0.4338 vs 실제 0.288</strong> — AUC만 보고하면 놓칩니다</li>
+<li>test set 재사용 — 쓸모없는 200개 중 최고가 0.6166, 새 데이터에서 0.5140</li>
+<li>CV 밖 feature 선택 — 순수 잡음으로 <strong>0.8642</strong>, 제대로 하면 0.4499</li>
+<li>유병률 5%에서 “모두 음성”의 정확도 <strong>0.9502</strong>. PR-AUC 기준선은 유병률</li>
+</ul>
+</section>
+<section id="key-terms" class="level2">
+<h2 class="anchored" data-anchor-id="key-terms">🔑 Key terms</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>용어</th>
+<th>정의</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Global / local 설명</strong></td>
+<td>모델 전체의 행동 / 한 예측의 이유</td>
+</tr>
+<tr class="even">
+<td><strong>Model-agnostic</strong></td>
+<td>예측 함수만으로 동작하는 설명 방법</td>
+</tr>
+<tr class="odd">
+<td><strong>Impurity importance (MDI)</strong></td>
+<td>트리 split의 불순도 감소 합. 연속형·다범주에 편향</td>
+</tr>
+<tr class="even">
+<td><strong>Permutation importance</strong></td>
+<td>test에서 변수를 섞었을 때 성능 감소</td>
+</tr>
+<tr class="odd">
+<td><strong>Drop-column importance</strong></td>
+<td>변수를 빼고 재학습했을 때 성능 감소</td>
+</tr>
+<tr class="even">
+<td><strong>PDP</strong></td>
+<td>변수를 모든 샘플에 고정했을 때 평균 예측</td>
+</tr>
+<tr class="odd">
+<td><strong>ICE</strong></td>
+<td>PDP의 샘플별 곡선. 이질성·상호작용을 보여줌</td>
+</tr>
+<tr class="even">
+<td><strong>ALE</strong></td>
+<td>실제 데이터 근처의 국소 변화 누적. 상관에 강함</td>
+</tr>
+<tr class="odd">
+<td><strong>Shapley value / SHAP</strong></td>
+<td>모든 등장 순서에 대한 한계 기여의 평균</td>
+</tr>
+<tr class="even">
+<td><strong>Efficiency</strong></td>
+<td><span class="math inline">\(\sum\phi_j = f(\mathbf{x}) - \mathbb{E}f\)</span></td>
+</tr>
+<tr class="odd">
+<td><strong>LIME</strong></td>
+<td>국소 선형 대리 모형으로 설명</td>
+</tr>
+<tr class="even">
+<td><strong>Calibration intercept / slope</strong></td>
+<td>예측 확률 수준의 치우침 / 퍼짐 (0과 1이 이상적)</td>
+</tr>
+<tr class="odd">
+<td><strong>External validation</strong></td>
+<td>다른 시기·기관 데이터에서의 검증</td>
+</tr>
+<tr class="even">
+<td><strong>TRIPOD+AI</strong></td>
+<td>임상 예측 모형 보고 지침, 27개 항목 (2024)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="references" class="level2">
+<h2 class="anchored" data-anchor-id="references">➕ References</h2>
+<ul>
+<li>Collins GS, Moons KGM, Dhiman P, et al.&nbsp;TRIPOD+AI statement: updated guidance for reporting clinical prediction models that use regression or machine learning methods. <em>BMJ</em> 2024;385:e078378.</li>
+<li>Collins GS, Reitsma JB, Altman DG, Moons KGM. Transparent reporting of a multivariable prediction model for individual prognosis or diagnosis (TRIPOD). <em>BMJ</em> 2015;350:g7594.</li>
+<li>Breiman L. Random forests. <em>Machine Learning</em> 2001;45:5–32.</li>
+<li>Strobl C, Boulesteix AL, Zeileis A, Hothorn T. Bias in random forest variable importance measures: illustrations, sources and a solution. <em>BMC Bioinformatics</em> 2007;8:25.</li>
+<li>Hooker G, Mentch L, Zhou S. Unrestricted permutation forces extrapolation: variable importance requires at least one more model, or there is no free variable importance. <em>Statistics and Computing</em> 2021;31:82.</li>
+<li>Friedman JH. Greedy function approximation: a gradient boosting machine. <em>Annals of Statistics</em> 2001;29(5):1189–1232.</li>
+<li>Goldstein A, Kapelner A, Bleich J, Pitkin E. Peeking inside the black box: visualizing statistical learning with plots of individual conditional expectation. <em>J Comput Graph Stat</em> 2015;24(1):44–65.</li>
+<li>Apley DW, Zhu J. Visualizing the effects of predictor variables in black box supervised learning models. <em>JRSS-B</em> 2020;82(4):1059–1086.</li>
+<li>Lundberg SM, Lee SI. A unified approach to interpreting model predictions. <em>NeurIPS 2017</em>.</li>
+<li>Štrumbelj E, Kononenko I. Explaining prediction models and individual predictions with feature contributions. <em>Knowledge and Information Systems</em> 2014;41:647–665.</li>
+<li>Ribeiro MT, Singh S, Guestrin C. “Why should I trust you?”: explaining the predictions of any classifier. <em>KDD 2016</em>:1135–1144.</li>
+<li>Rudin C. Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead. <em>Nature Machine Intelligence</em> 2019;1:206–215.</li>
+<li>Christodoulou E, Ma J, Collins GS, et al.&nbsp;A systematic review shows no performance benefit of machine learning over logistic regression for clinical prediction models. <em>J Clin Epidemiol</em> 2019;110:12–22.</li>
+<li>Van Calster B, McLernon DJ, van Smeden M, et al.&nbsp;Calibration: the Achilles heel of predictive analytics. <em>BMC Medicine</em> 2019;17:230.</li>
+<li>Kapoor S, Narayanan A. Leakage and the reproducibility crisis in machine-learning-based science. <em>Patterns</em> 2023;4(9):100804.</li>
+<li>Molnar C. <em>Interpretable Machine Learning</em>, 2nd ed.&nbsp;2022. christophm.github.io/interpretable-ml-book</li>
+</ul>
+<hr>
+<p><a href="../chapters/13_dimension_reduction.html">← W13. Dimension Reduction</a></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<!-- AI Chat Widget 초기화 -->
+
+<!-- _quarto.yml의 include-after-body에 등록되어 모든 페이지에 자동 삽입됩니다 -->
+
+<script>
+
+  // ★ Cloudflare Worker 배포 후 URL로 교체하세요
+
+  const WORKER_URL = "https://falling-wave-447f.eh0129s.workers.dev/";
+
+
+
+  // 각 .qmd 파일의 YAML에서 ai-context를 읽어옵니다
+
+  // (없으면 빈 문자열 → 기본 안내 메시지)
+
+  const metaContext = document.querySelector('meta[name="ai-context"]');
+
+  const metaTitle   = document.querySelector('meta[name="ai-title"]') || { content: document.title };
+
+
+
+  window.AI_CHAT_CONFIG = {
+
+    workerUrl:      WORKER_URL,
+
+    chapterContext: metaContext ? metaContext.content : "",
+
+    chapterTitle:   metaTitle  ? metaTitle.content   : document.title,
+
+  };
+
+</script>
+
+<script src="../_extensions/ai-chat/ai-chat.js" defer=""></script>
+
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>Copyright 2026, Eunji</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+<script src="../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

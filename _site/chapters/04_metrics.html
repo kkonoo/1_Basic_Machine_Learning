@@ -1,0 +1,1624 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Eunji Ha">
+<meta name="dcterms.date" content="2026-09-21">
+<meta name="description" content="Confusion matrix, ROC·PR, calibration, 모델 비교 검정, bias-variance">
+
+<title>W4. 성능 척도와 모델 비교 – 1. Basic Machine Learning</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../images/logo.ico" rel="icon">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-234273d1456647dabc34a594ac50e507.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-b7acaf8b0572301ab572ffd94e5b5c34.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<meta name="ai-title" content="W4. 성능 척도와 모델 비교">
+<meta name="ai-context" content="
+이 챕터는 분류·회귀 모델의 성능 척도와 모델 간 비교 방법을 다룹니다.
+Confusion matrix에서 recall(sensitivity), precision, specificity, NPV가 유도되고,
+precision과 recall의 trade-off, P-R curve, break-even point, F1과 F-beta,
+macro/micro 평균을 설명합니다.
+ROC curve는 FPR-TPR 평면의 곡선이고 AUC로 요약되지만,
+class imbalance에서는 ROC-AUC가 실제보다 후하게 나옵니다.
+유병률 2% 데이터에서 ROC-AUC 0.85인 모델도 recall 80%를 얻으려면
+637명을 검사해 36명만 찾게 되어 precision이 0.057에 불과합니다.
+따라서 불균형에서는 PR-AUC(average precision)를 함께 봐야 합니다 (Saito &amp; Rehmsmeier 2015).
+Calibration은 판별력과 다른 축입니다. 다운샘플링으로 균형을 맞춰 학습하면
+ROC-AUC는 그대로 0.801인데 평균 예측확률이 실제 유병률 0.043에서 0.361로 튀고
+Brier score가 0.038에서 0.187로 악화됩니다 (Van Calster et al. 2019).
+모델 비교에는 paired t-test(교차검증 fold 간 상관 때문에 주의),
+McNemar 검정, 여러 모델·데이터셋 비교에는 Friedman + Nemenyi를 씁니다
+(Dietterich 1998, Demsar 2006, Nadeau &amp; Bengio 2003).
+Generalization error는 bias^2 + variance + noise로 분해되며,
+모델 복잡도가 증가하면 bias는 줄고 variance는 커지는 bias-variance dilemma가 생깁니다.
+">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../assets/html.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">1. Basic Machine Learning</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/kkonoo/1_Basic_Machine_Learning"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/04_metrics.html">W4. 성능 척도와 모델 비교</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Home</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Part 1. 기초</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/01_intro.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W1. Machine Learning이란 무엇인가</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/02_preprocessing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W2. 데이터 준비와 Feature Engineering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/03_validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W3. 검증 설계</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/04_metrics.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">W4. 성능 척도와 모델 비교</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/05_linear_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W5. 선형회귀와 로지스틱회귀</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/06_regularization.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W6. 정규화 · LDA · 다중분류 · 불균형</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/07_decision_tree.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W7. Decision Tree</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/09_ensemble.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W9. Ensemble Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/10_svm.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W10. SVM과 Kernel Methods</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/11_bayes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W11. Bayesian Classifier</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/12_clustering.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W12. Clustering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/13_dimension_reduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W13. Dimension Reduction</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/14_interpretation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W14. 모델 해석과 보고</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Contents</h2>
+   
+  <ul>
+  <li><a href="#기본-척도와-그-함정" id="toc-기본-척도와-그-함정" class="nav-link active" data-scroll-target="#기본-척도와-그-함정">1. 기본 척도와 그 함정 📊</a>
+  <ul>
+  <li><a href="#error-rate와-accuracy" id="toc-error-rate와-accuracy" class="nav-link" data-scroll-target="#error-rate와-accuracy">1) Error rate와 accuracy</a></li>
+  <li><a href="#accuracy-paradox" id="toc-accuracy-paradox" class="nav-link" data-scroll-target="#accuracy-paradox">2) ⚠️ Accuracy paradox</a></li>
+  </ul></li>
+  <li><a href="#confusion-matrix" id="toc-confusion-matrix" class="nav-link" data-scroll-target="#confusion-matrix">2. Confusion matrix 🔲</a>
+  <ul>
+  <li><a href="#네-칸" id="toc-네-칸" class="nav-link" data-scroll-target="#네-칸">1) 네 칸</a></li>
+  <li><a href="#파생-지표" id="toc-파생-지표" class="nav-link" data-scroll-target="#파생-지표">2) 파생 지표</a></li>
+  <li><a href="#무엇을-볼-것인가" id="toc-무엇을-볼-것인가" class="nav-link" data-scroll-target="#무엇을-볼-것인가">3) 무엇을 볼 것인가</a></li>
+  </ul></li>
+  <li><a href="#precision-recall과-f-score" id="toc-precision-recall과-f-score" class="nav-link" data-scroll-target="#precision-recall과-f-score">3. Precision-Recall과 F score ⚖️</a>
+  <ul>
+  <li><a href="#trade-off" id="toc-trade-off" class="nav-link" data-scroll-target="#trade-off">1) Trade-off</a></li>
+  <li><a href="#p-r-curve와-bep" id="toc-p-r-curve와-bep" class="nav-link" data-scroll-target="#p-r-curve와-bep">2) P-R curve와 BEP</a></li>
+  <li><a href="#f1과-fβ" id="toc-f1과-fβ" class="nav-link" data-scroll-target="#f1과-fβ">3) F1과 Fβ</a></li>
+  <li><a href="#macro-micro" id="toc-macro-micro" class="nav-link" data-scroll-target="#macro-micro">4) Macro / micro</a></li>
+  </ul></li>
+  <li><a href="#roc-auc-그리고-불균형" id="toc-roc-auc-그리고-불균형" class="nav-link" data-scroll-target="#roc-auc-그리고-불균형">4. ROC, AUC, 그리고 불균형 📈</a>
+  <ul>
+  <li><a href="#임계값을-바꾼다는-것" id="toc-임계값을-바꾼다는-것" class="nav-link" data-scroll-target="#임계값을-바꾼다는-것">1) 임계값을 바꾼다는 것</a></li>
+  <li><a href="#roc와-auc" id="toc-roc와-auc" class="nav-link" data-scroll-target="#roc와-auc">2) ROC와 AUC</a></li>
+  <li><a href="#불균형에서-roc-auc는-후하다" id="toc-불균형에서-roc-auc는-후하다" class="nav-link" data-scroll-target="#불균형에서-roc-auc는-후하다">3) ⚠️ 불균형에서 ROC-AUC는 후하다</a></li>
+  <li><a href="#실습-같은-모델-두-개의-그림" id="toc-실습-같은-모델-두-개의-그림" class="nav-link" data-scroll-target="#실습-같은-모델-두-개의-그림">4) 🧪 실습: 같은 모델, 두 개의 그림</a></li>
+  </ul></li>
+  <li><a href="#확률을-믿을-수-있는가-calibration" id="toc-확률을-믿을-수-있는가-calibration" class="nav-link" data-scroll-target="#확률을-믿을-수-있는가-calibration">5. 확률을 믿을 수 있는가 — Calibration 🎯</a>
+  <ul>
+  <li><a href="#판별력-보정" id="toc-판별력-보정" class="nav-link" data-scroll-target="#판별력-보정">1) 판별력 ≠ 보정</a></li>
+  <li><a href="#calibration-plot과-brier-score" id="toc-calibration-plot과-brier-score" class="nav-link" data-scroll-target="#calibration-plot과-brier-score">2) Calibration plot과 Brier score</a></li>
+  <li><a href="#실습-균형을-맞춰-학습한-대가" id="toc-실습-균형을-맞춰-학습한-대가" class="nav-link" data-scroll-target="#실습-균형을-맞춰-학습한-대가">3) 🧪 실습: 균형을 맞춰 학습한 대가</a></li>
+  <li><a href="#보정-방법" id="toc-보정-방법" class="nav-link" data-scroll-target="#보정-방법">4) 보정 방법</a></li>
+  </ul></li>
+  <li><a href="#회귀-지표" id="toc-회귀-지표" class="nav-link" data-scroll-target="#회귀-지표">6. 회귀 지표 📏</a></li>
+  <li><a href="#모델-비교" id="toc-모델-비교" class="nav-link" data-scroll-target="#모델-비교">7. 모델 비교 🆚</a>
+  <ul>
+  <li><a href="#차이가-우연인가" id="toc-차이가-우연인가" class="nav-link" data-scroll-target="#차이가-우연인가">1) 차이가 우연인가</a></li>
+  <li><a href="#paired-t-test" id="toc-paired-t-test" class="nav-link" data-scroll-target="#paired-t-test">2) Paired t-test</a></li>
+  <li><a href="#mcnemar-검정" id="toc-mcnemar-검정" class="nav-link" data-scroll-target="#mcnemar-검정">3) McNemar 검정</a></li>
+  <li><a href="#friedman-nemenyi" id="toc-friedman-nemenyi" class="nav-link" data-scroll-target="#friedman-nemenyi">4) Friedman + Nemenyi</a></li>
+  <li><a href="#다중-비교" id="toc-다중-비교" class="nav-link" data-scroll-target="#다중-비교">5) ⚠️ 다중 비교</a></li>
+  </ul></li>
+  <li><a href="#bias-variance-decomposition" id="toc-bias-variance-decomposition" class="nav-link" data-scroll-target="#bias-variance-decomposition">8. Bias-Variance Decomposition 🎲</a>
+  <ul>
+  <li><a href="#세-성분" id="toc-세-성분" class="nav-link" data-scroll-target="#세-성분">1) 세 성분</a></li>
+  <li><a href="#분해식" id="toc-분해식" class="nav-link" data-scroll-target="#분해식">2) 분해식</a></li>
+  <li><a href="#bias-variance-dilemma" id="toc-bias-variance-dilemma" class="nav-link" data-scroll-target="#bias-variance-dilemma">3) Bias-variance dilemma</a></li>
+  <li><a href="#실습-분해를-눈으로-보기" id="toc-실습-분해를-눈으로-보기" class="nav-link" data-scroll-target="#실습-분해를-눈으로-보기">4) 🧪 실습: 분해를 눈으로 보기</a></li>
+  </ul></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">📝 Summary</a></li>
+  <li><a href="#key-terms" id="toc-key-terms" class="nav-link" data-scroll-target="#key-terms">🔑 Key terms</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">➕ References</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content column-body" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/04_metrics.html">W4. 성능 척도와 모델 비교</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">W4. 성능 척도와 모델 비교</h1>
+</div>
+
+<div>
+  <div class="description">
+    Confusion matrix, ROC·PR, calibration, 모델 비교 검정, bias-variance
+  </div>
+</div>
+
+
+<div class="quarto-title-meta column-body">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Eunji Ha </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 21, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+🎯 Learning objectives
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>Confusion matrix에서 파생 지표를 유도하고 상황에 맞게 고를 수 있다</li>
+<li>Precision-recall trade-off와 임계값의 역할을 설명할 수 있다</li>
+<li><strong>불균형 데이터에서 ROC-AUC가 왜 후한지 설명하고 PR-AUC를 쓸 수 있다</strong></li>
+<li><strong>판별력과 보정(calibration)을 구분하고 Brier score로 평가할 수 있다</strong></li>
+<li>모델 간 성능 차이가 우연인지 검정할 수 있다</li>
+<li>Generalization error를 bias·variance·noise로 분해해 해석할 수 있다</li>
+</ul>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>🤔 <strong>ROC-AUC 0.85인 모델로 환자의 80%를 찾으려면, 몇 명을 검사해야 할까?</strong></p>
+</blockquote>
+<hr>
+<section id="기본-척도와-그-함정" class="level2">
+<h2 class="anchored" data-anchor-id="기본-척도와-그-함정">1. 기본 척도와 그 함정 📊</h2>
+<section id="error-rate와-accuracy" class="level3">
+<h3 class="anchored" data-anchor-id="error-rate와-accuracy">1) Error rate와 accuracy</h3>
+<ul>
+<li><strong>Error rate</strong> — 잘못 분류한 샘플 수 / 전체 샘플 수</li>
+<li><strong>Accuracy</strong> — 1 − error rate</li>
+<li>장점 — 직관적, 계산 간단</li>
+<li>한계 — <strong>class 분포를 전혀 반영하지 않음</strong></li>
+</ul>
+</section>
+<section id="accuracy-paradox" class="level3">
+<h3 class="anchored" data-anchor-id="accuracy-paradox">2) ⚠️ Accuracy paradox</h3>
+<ul>
+<li>유병률 2% 질환에서 “전원 음성”이라고 답하는 모델</li>
+<li>Accuracy = 98%. 환자는 <strong>한 명도</strong> 찾지 못함</li>
+<li>→ 불균형 데이터에서 accuracy는 <strong>보고하지 않는 편이 낫다</strong></li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="confusion-matrix" class="level2">
+<h2 class="anchored" data-anchor-id="confusion-matrix">2. Confusion matrix 🔲</h2>
+<section id="네-칸" class="level3">
+<h3 class="anchored" data-anchor-id="네-칸">1) 네 칸</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th></th>
+<th>예측 Positive</th>
+<th>예측 Negative</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>실제 Positive</strong></td>
+<td>TP (True Positive)</td>
+<td>FN (False Negative)</td>
+</tr>
+<tr class="even">
+<td><strong>실제 Negative</strong></td>
+<td>FP (False Positive)</td>
+<td>TN (True Negative)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="파생-지표" class="level3">
+<h3 class="anchored" data-anchor-id="파생-지표">2) 파생 지표</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 31%">
+<col style="width: 26%">
+<col style="width: 42%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>지표</th>
+<th>식</th>
+<th>읽는 법</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Recall / Sensitivity</strong></td>
+<td>TP / (TP + FN)</td>
+<td>실제 양성 중 몇 %를 잡았나</td>
+</tr>
+<tr class="even">
+<td><strong>Specificity</strong></td>
+<td>TN / (TN + FP)</td>
+<td>실제 음성 중 몇 %를 통과시켰나</td>
+</tr>
+<tr class="odd">
+<td><strong>Precision / PPV</strong></td>
+<td>TP / (TP + FP)</td>
+<td>양성이라 한 것 중 몇 %가 진짜인가</td>
+</tr>
+<tr class="even">
+<td><strong>NPV</strong></td>
+<td>TN / (TN + FN)</td>
+<td>음성이라 한 것 중 몇 %가 진짜인가</td>
+</tr>
+<tr class="odd">
+<td><strong>FPR</strong></td>
+<td>FP / (FP + TN) = 1 − specificity</td>
+<td>위양성률</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Recall과 specificity</strong> — 실제 class를 기준으로 계산. 유병률과 무관</li>
+<li><strong>Precision과 NPV</strong> — 예측을 기준으로 계산. <strong>유병률에 크게 의존</strong></li>
+</ul>
+</section>
+<section id="무엇을-볼-것인가" class="level3">
+<h3 class="anchored" data-anchor-id="무엇을-볼-것인가">3) 무엇을 볼 것인가</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 26%">
+<col style="width: 47%">
+<col style="width: 26%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>상황</th>
+<th>중요한 지표</th>
+<th>이유</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>선별검사(screening)</td>
+<td>Recall ↑</td>
+<td>놓치면 안 됨. 위양성은 확진검사로 걸러냄</td>
+</tr>
+<tr class="even">
+<td>확진·치료 결정</td>
+<td>Precision ↑</td>
+<td>잘못된 양성의 대가가 큼</td>
+</tr>
+<tr class="odd">
+<td>바이오마커 패널 후보 선정</td>
+<td>Precision ↑</td>
+<td>후속 실험 자원이 한정</td>
+</tr>
+<tr class="even">
+<td>자원 배분 (검사 100건)</td>
+<td>Precision @ top-k</td>
+<td>실제 운영 조건과 일치</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>하나의 숫자로 요약하기 전에, 이 모델이 어떻게 쓰일지를 먼저 정할 것</strong></li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="precision-recall과-f-score" class="level2">
+<h2 class="anchored" data-anchor-id="precision-recall과-f-score">3. Precision-Recall과 F score ⚖️</h2>
+<section id="trade-off" class="level3">
+<h3 class="anchored" data-anchor-id="trade-off">1) Trade-off</h3>
+<ul>
+<li>임계값을 낮추면 — 양성 판정 증가 → recall ↑, precision ↓</li>
+<li>임계값을 높이면 — recall ↓, precision ↑</li>
+<li><strong>둘은 원리적으로 동시에 최대화되지 않음</strong></li>
+</ul>
+</section>
+<section id="p-r-curve와-bep" class="level3">
+<h3 class="anchored" data-anchor-id="p-r-curve와-bep">2) P-R curve와 BEP</h3>
+<ul>
+<li>임계값을 연속적으로 바꾸며 (recall, precision)을 그린 곡선</li>
+<li>곡선 아래 면적이 클수록 좋음 → 성능 비교 가능</li>
+<li><strong>Break-even point (BEP)</strong> — precision = recall 이 되는 지점</li>
+<li>BEP는 간편하지만 <strong>너무 단순</strong> — precision과 recall의 상대 중요도를 반영 못 함</li>
+</ul>
+</section>
+<section id="f1과-fβ" class="level3">
+<h3 class="anchored" data-anchor-id="f1과-fβ">3) F1과 Fβ</h3>
+<p><span class="math display">\[F_1 = \frac{2 \cdot P \cdot R}{P + R}, \qquad F_\beta = \frac{(1+\beta^2)\, P \cdot R}{\beta^2 P + R}\]</span></p>
+<ul>
+<li><span class="math inline">\(F_1\)</span> — precision과 recall의 <strong>조화평균</strong>. 한쪽이 낮으면 크게 벌점</li>
+<li><span class="math inline">\(\beta\)</span> — precision 대비 <strong>recall의 상대적 중요도</strong>
+<ul>
+<li><span class="math inline">\(\beta &gt; 1\)</span> → recall 중시 (선별검사)</li>
+<li><span class="math inline">\(\beta &lt; 1\)</span> → precision 중시 (확진)</li>
+</ul></li>
+<li>⚠️ F score는 <strong>TN을 전혀 쓰지 않음</strong> — 음성을 잘 거르는 능력은 반영 안 됨</li>
+</ul>
+</section>
+<section id="macro-micro" class="level3">
+<h3 class="anchored" data-anchor-id="macro-micro">4) Macro / micro</h3>
+<ul>
+<li>다중 class 또는 반복 검증에서 평균 내는 두 방식</li>
+<li><strong>Micro</strong> — 모든 fold·class의 TP/FP/FN을 합산한 뒤 지표 계산
+<ul>
+<li>샘플이 많은 class의 영향이 큼</li>
+</ul></li>
+<li><strong>Macro</strong> — class·fold별로 지표를 계산한 뒤 평균
+<ul>
+<li><strong>희귀 class에 동등한 가중치</strong> → 불균형에서는 보통 macro</li>
+</ul></li>
+<li>보고 시 어느 쪽인지 반드시 명시</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="roc-auc-그리고-불균형" class="level2">
+<h2 class="anchored" data-anchor-id="roc-auc-그리고-불균형">4. ROC, AUC, 그리고 불균형 📈</h2>
+<section id="임계값을-바꾼다는-것" class="level3">
+<h3 class="anchored" data-anchor-id="임계값을-바꾼다는-것">1) 임계값을 바꾼다는 것</h3>
+<ul>
+<li>대부분의 분류기는 0/1이 아니라 <strong>연속 점수</strong>를 출력</li>
+<li>임계값 하나를 고정하면 정보가 손실됨</li>
+<li>→ 모든 임계값에 걸쳐 성능을 요약하는 곡선이 필요</li>
+</ul>
+</section>
+<section id="roc와-auc" class="level3">
+<h3 class="anchored" data-anchor-id="roc와-auc">2) ROC와 AUC</h3>
+<ul>
+<li><strong>ROC curve</strong> — x축 FPR, y축 TPR(= recall)</li>
+<li><strong>AUC</strong> — 곡선 아래 면적</li>
+<li>해석 — <strong>무작위로 뽑은 양성 1명이 음성 1명보다 높은 점수를 받을 확률</strong></li>
+<li>0.5 = 무작위, 1.0 = 완전 분리</li>
+<li>장점 — 임계값·유병률과 무관하게 <strong>순위 능력</strong>만 평가</li>
+</ul>
+</section>
+<section id="불균형에서-roc-auc는-후하다" class="level3">
+<h3 class="anchored" data-anchor-id="불균형에서-roc-auc는-후하다">3) ⚠️ 불균형에서 ROC-AUC는 후하다</h3>
+<ul>
+<li>FPR의 분모는 TN + FP. 음성이 압도적으로 많으면 <strong>FP가 꽤 늘어도 FPR은 거의 안 움직임</strong></li>
+<li>결과 — ROC 곡선은 좋아 보이는데, 실제 양성 판정 목록은 위양성투성이</li>
+<li>PR curve는 분모에 TN이 없어 이 문제에 영향받지 않음</li>
+<li><strong>PR-AUC의 기준선은 0.5가 아니라 유병률</strong> — 보고 시 함께 제시할 것</li>
+</ul>
+</section>
+<section id="실습-같은-모델-두-개의-그림" class="level3">
+<h3 class="anchored" data-anchor-id="실습-같은-모델-두-개의-그림">4) 🧪 실습: 같은 모델, 두 개의 그림</h3>
+<ul>
+<li>샘플 2,000명, 유병률 약 2%</li>
+<li>양성은 점수 분포가 평균 1.5만큼 높음 (현실적인 수준의 신호)</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">2000</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>label <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, <span class="fl">0.02</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>score <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, <span class="at">mean =</span> <span class="fu">ifelse</span>(label <span class="sc">==</span> <span class="dv">1</span>, <span class="fl">1.5</span>, <span class="dv">0</span>))</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="co"># ROC-AUC = 양성이 음성보다 높은 점수를 받을 확률 (Mann-Whitney)</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>auc_roc <span class="ot">&lt;-</span> <span class="cf">function</span>(s, l) {</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  r <span class="ot">&lt;-</span> <span class="fu">rank</span>(s); n1 <span class="ot">&lt;-</span> <span class="fu">sum</span>(l <span class="sc">==</span> <span class="dv">1</span>); n0 <span class="ot">&lt;-</span> <span class="fu">sum</span>(l <span class="sc">==</span> <span class="dv">0</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  (<span class="fu">sum</span>(r[l <span class="sc">==</span> <span class="dv">1</span>]) <span class="sc">-</span> n1 <span class="sc">*</span> (n1 <span class="sc">+</span> <span class="dv">1</span>) <span class="sc">/</span> <span class="dv">2</span>) <span class="sc">/</span> (n1 <span class="sc">*</span> n0)</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="co"># PR-AUC = average precision</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>avg_prec <span class="ot">&lt;-</span> <span class="cf">function</span>(s, l) {</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  o <span class="ot">&lt;-</span> <span class="fu">order</span>(s, <span class="at">decreasing =</span> <span class="cn">TRUE</span>); y <span class="ot">&lt;-</span> l[o]</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  tp <span class="ot">&lt;-</span> <span class="fu">cumsum</span>(y <span class="sc">==</span> <span class="dv">1</span>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">sum</span>((tp <span class="sc">/</span> <span class="fu">seq_along</span>(y))[y <span class="sc">==</span> <span class="dv">1</span>]) <span class="sc">/</span> <span class="fu">sum</span>(l <span class="sc">==</span> <span class="dv">1</span>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">prevalence  =</span> <span class="fu">round</span>(<span class="fu">mean</span>(label), <span class="dv">3</span>),</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">n_positive  =</span> <span class="fu">sum</span>(label),</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">ROC_AUC     =</span> <span class="fu">round</span>(<span class="fu">auc_roc</span>(score, label), <span class="dv">3</span>),</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">PR_AUC      =</span> <span class="fu">round</span>(<span class="fu">avg_prec</span>(score, label), <span class="dv">3</span>),</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">PR_baseline =</span> <span class="fu">round</span>(<span class="fu">mean</span>(label), <span class="dv">3</span>)</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  prevalence n_positive ROC_AUC PR_AUC PR_baseline
+1      0.022         44   0.849  0.314       0.022</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>o <span class="ot">&lt;-</span> <span class="fu">order</span>(score, <span class="at">decreasing =</span> <span class="cn">TRUE</span>); y <span class="ot">&lt;-</span> label[o]</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>tp <span class="ot">&lt;-</span> <span class="fu">cumsum</span>(y <span class="sc">==</span> <span class="dv">1</span>); fp <span class="ot">&lt;-</span> <span class="fu">cumsum</span>(y <span class="sc">==</span> <span class="dv">0</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>prev <span class="ot">&lt;-</span> <span class="fu">mean</span>(label)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>curves <span class="ot">&lt;-</span> <span class="fu">rbind</span>(</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">panel =</span> <span class="fu">sprintf</span>(<span class="st">"ROC  (AUC = %.3f)"</span>, <span class="fu">auc_roc</span>(score, label)),</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>             <span class="at">x =</span> fp <span class="sc">/</span> <span class="fu">sum</span>(label <span class="sc">==</span> <span class="dv">0</span>), <span class="at">y =</span> tp <span class="sc">/</span> <span class="fu">sum</span>(label), <span class="at">type =</span> <span class="st">"model"</span>),</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">panel =</span> <span class="fu">sprintf</span>(<span class="st">"Precision-Recall  (AP = %.3f)"</span>, <span class="fu">avg_prec</span>(score, label)),</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>             <span class="at">x =</span> tp <span class="sc">/</span> <span class="fu">sum</span>(label), <span class="at">y =</span> tp <span class="sc">/</span> <span class="fu">seq_along</span>(y), <span class="at">type =</span> <span class="st">"model"</span>)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>refs <span class="ot">&lt;-</span> <span class="fu">rbind</span>(</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">panel =</span> <span class="fu">sprintf</span>(<span class="st">"ROC  (AUC = %.3f)"</span>, <span class="fu">auc_roc</span>(score, label)),</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>             <span class="at">x =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">y =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">type =</span> <span class="st">"baseline"</span>),</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">panel =</span> <span class="fu">sprintf</span>(<span class="st">"Precision-Recall  (AP = %.3f)"</span>, <span class="fu">avg_prec</span>(score, label)),</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>             <span class="at">x =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>), <span class="at">y =</span> <span class="fu">c</span>(prev, prev), <span class="at">type =</span> <span class="st">"baseline"</span>)</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>plot_df <span class="ot">&lt;-</span> <span class="fu">rbind</span>(curves, refs)</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>plot_df<span class="sc">$</span>panel <span class="ot">&lt;-</span> <span class="fu">factor</span>(plot_df<span class="sc">$</span>panel, <span class="at">levels =</span> <span class="fu">unique</span>(curves<span class="sc">$</span>panel))  <span class="co"># ROC를 왼쪽에</span></span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(plot_df, <span class="fu">aes</span>(x, y, <span class="at">linetype =</span> type)) <span class="sc">+</span></span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">8</span>, <span class="at">colour =</span> <span class="st">"#d1495b"</span>) <span class="sc">+</span></span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span> panel, <span class="at">scales =</span> <span class="st">"free_x"</span>) <span class="sc">+</span></span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_linetype_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="at">model =</span> <span class="dv">1</span>, <span class="at">baseline =</span> <span class="dv">2</span>)) <span class="sc">+</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="cn">NULL</span>, <span class="at">linetype =</span> <span class="cn">NULL</span>,</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"left: FPR vs TPR   |   right: Recall vs Precision (dashed = prevalence)"</span>) <span class="sc">+</span></span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="04_metrics_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="768"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 실제 운영 조건으로 환산하면?</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>recall <span class="ot">&lt;-</span> tp <span class="sc">/</span> <span class="fu">sum</span>(label); precision <span class="ot">&lt;-</span> tp <span class="sc">/</span> <span class="fu">seq_along</span>(y)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="fu">c</span>(<span class="fl">0.3</span>, <span class="fl">0.5</span>, <span class="fl">0.8</span>), <span class="cf">function</span>(r) {</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  i <span class="ot">&lt;-</span> <span class="fu">which</span>(recall <span class="sc">&gt;=</span> r)[<span class="dv">1</span>]</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">target_recall =</span> r, <span class="at">n_tested =</span> i,</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">true_positives =</span> tp[i], <span class="at">precision =</span> <span class="fu">round</span>(precision[i], <span class="dv">3</span>))</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>}))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  target_recall n_tested true_positives precision
+1           0.3       49             14     0.286
+2           0.5       91             22     0.242
+3           0.8      637             36     0.057</code></pre>
+</div>
+</div>
+<ul>
+<li><strong>ROC-AUC 0.849</strong> — 논문이라면 “우수한 판별력”으로 쓰일 숫자</li>
+<li>그러나 환자의 <strong>80%를 찾으려면 637명을 검사해 36명</strong>을 얻음 → precision 0.057</li>
+<li>같은 모델, 같은 데이터. <strong>지표 선택만 바꿔도 결론이 뒤집힘</strong></li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="확률을-믿을-수-있는가-calibration" class="level2">
+<h2 class="anchored" data-anchor-id="확률을-믿을-수-있는가-calibration">5. 확률을 믿을 수 있는가 — Calibration 🎯</h2>
+<section id="판별력-보정" class="level3">
+<h3 class="anchored" data-anchor-id="판별력-보정">1) 판별력 ≠ 보정</h3>
+<ul>
+<li><strong>Discrimination(판별력)</strong> — 양성을 음성보다 높게 매기는 능력. ROC-AUC가 측정</li>
+<li><strong>Calibration(보정)</strong> — “위험도 20%”라고 한 환자들 중 실제로 20%가 발병하는가</li>
+<li><strong>둘은 독립적</strong> — 모든 확률에 같은 상수를 곱해도 AUC는 변하지 않음</li>
+<li>임상 의사결정·자원 배분에는 <strong>확률의 절대값</strong>이 필요 → 보정이 필수</li>
+</ul>
+</section>
+<section id="calibration-plot과-brier-score" class="level3">
+<h3 class="anchored" data-anchor-id="calibration-plot과-brier-score">2) Calibration plot과 Brier score</h3>
+<ul>
+<li><strong>Calibration plot</strong> — 예측확률을 구간별로 묶어 (평균 예측확률, 실제 발생률)을 그림
+<ul>
+<li>대각선에 붙을수록 좋음</li>
+</ul></li>
+<li><strong>Brier score</strong> — <span class="math inline">\(\frac{1}{n}\sum (p_i - y_i)^2\)</span>
+<ul>
+<li>낮을수록 좋음. 판별력과 보정을 <strong>함께</strong> 반영</li>
+</ul></li>
+</ul>
+</section>
+<section id="실습-균형을-맞춰-학습한-대가" class="level3">
+<h3 class="anchored" data-anchor-id="실습-균형을-맞춰-학습한-대가">3) 🧪 실습: 균형을 맞춰 학습한 대가</h3>
+<ul>
+<li>불균형이 싫어서 다수 class를 다운샘플링해 1:1로 맞춘 뒤 학습하는 관행</li>
+<li>판별력은 유지되지만 <strong>확률이 통째로 이동</strong>함</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">4000</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>x <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n)</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>p_true <span class="ot">&lt;-</span> <span class="fu">plogis</span>(<span class="sc">-</span><span class="dv">4</span> <span class="sc">+</span> <span class="fl">1.5</span> <span class="sc">*</span> x)          <span class="co"># 실제 유병률이 낮은 상황</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n, <span class="dv">1</span>, p_true)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>d <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(x, y)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>tr <span class="ot">&lt;-</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">2000</span>; te <span class="ot">&lt;-</span> <span class="dv">2001</span><span class="sc">:</span><span class="dv">4000</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co"># ① 원래 분포 그대로 학습</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>m_plain <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> x, <span class="at">data =</span> d[tr, ], <span class="at">family =</span> binomial)</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="co"># ② 다수 class를 다운샘플링해 1:1로 맞춰 학습</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>pos <span class="ot">&lt;-</span> tr[d<span class="sc">$</span>y[tr] <span class="sc">==</span> <span class="dv">1</span>]</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>neg <span class="ot">&lt;-</span> <span class="fu">sample</span>(tr[d<span class="sc">$</span>y[tr] <span class="sc">==</span> <span class="dv">0</span>], <span class="fu">length</span>(pos))</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>m_bal <span class="ot">&lt;-</span> <span class="fu">glm</span>(y <span class="sc">~</span> x, <span class="at">data =</span> d[<span class="fu">c</span>(pos, neg), ], <span class="at">family =</span> binomial)</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>p1 <span class="ot">&lt;-</span> <span class="fu">predict</span>(m_plain, d[te, ], <span class="at">type =</span> <span class="st">"response"</span>)</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>p2 <span class="ot">&lt;-</span> <span class="fu">predict</span>(m_bal,   d[te, ], <span class="at">type =</span> <span class="st">"response"</span>)</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>brier <span class="ot">&lt;-</span> <span class="cf">function</span>(p, y) <span class="fu">mean</span>((p <span class="sc">-</span> y)<span class="sc">^</span><span class="dv">2</span>)</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">model       =</span> <span class="fu">c</span>(<span class="st">"Original distribution"</span>, <span class="st">"Downsampled to 1:1"</span>),</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">mean_pred   =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">mean</span>(p1), <span class="fu">mean</span>(p2)), <span class="dv">3</span>),</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>  <span class="at">observed    =</span> <span class="fu">round</span>(<span class="fu">mean</span>(d<span class="sc">$</span>y[te]), <span class="dv">3</span>),</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a>  <span class="at">ROC_AUC     =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">auc_roc</span>(p1, d<span class="sc">$</span>y[te]), <span class="fu">auc_roc</span>(p2, d<span class="sc">$</span>y[te])), <span class="dv">3</span>),</span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>  <span class="at">Brier       =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">brier</span>(p1, d<span class="sc">$</span>y[te]), <span class="fu">brier</span>(p2, d<span class="sc">$</span>y[te])), <span class="dv">4</span>)</span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                  model mean_pred observed ROC_AUC  Brier
+1 Original distribution     0.044    0.043   0.801 0.0375
+2    Downsampled to 1:1     0.361    0.043   0.801 0.1866</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>cal <span class="ot">&lt;-</span> <span class="cf">function</span>(p, lab, name, <span class="at">bins =</span> <span class="dv">10</span>) {</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  g <span class="ot">&lt;-</span> <span class="fu">cut</span>(p, <span class="fu">quantile</span>(p, <span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="at">length.out =</span> bins <span class="sc">+</span> <span class="dv">1</span>)),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>           <span class="at">include.lowest =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">model =</span> name,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>             <span class="at">predicted =</span> <span class="fu">tapply</span>(p, g, mean),</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>             <span class="at">observed  =</span> <span class="fu">tapply</span>(lab, g, mean))</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>cal_df <span class="ot">&lt;-</span> <span class="fu">rbind</span>(<span class="fu">cal</span>(p1, d<span class="sc">$</span>y[te], <span class="st">"Original distribution"</span>),</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>                <span class="fu">cal</span>(p2, d<span class="sc">$</span>y[te], <span class="st">"Downsampled to 1:1"</span>))</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(cal_df, <span class="fu">aes</span>(predicted, observed, <span class="at">colour =</span> model)) <span class="sc">+</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_abline</span>(<span class="at">linetype =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">8</span>) <span class="sc">+</span> <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.8</span>) <span class="sc">+</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">"Original distribution"</span> <span class="ot">=</span> <span class="st">"#2e8b7a"</span>,</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>                                 <span class="st">"Downsampled to 1:1"</span>    <span class="ot">=</span> <span class="st">"#d1495b"</span>)) <span class="sc">+</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Mean predicted probability"</span>, <span class="at">y =</span> <span class="st">"Observed frequency"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"dashed = perfect calibration"</span>) <span class="sc">+</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="04_metrics_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="624"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><strong>ROC-AUC는 두 모델이 동일 (0.801)</strong> — 순위를 바꾸지 않았으므로 당연</li>
+<li>그러나 평균 예측확률은 실제 0.043 대비 <strong>0.361로 8배 과대</strong></li>
+<li>Brier score는 0.038 → 0.187로 악화</li>
+<li>→ 재샘플링은 <strong>임계값 조정의 한 형태</strong>일 뿐, 확률을 개선하지 않음</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+⚠️ W6 class imbalance 처리와 직결
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>SMOTE·다운샘플링 후 예측확률을 그대로 임상 위험도로 보고하는 것은 오류</li>
+<li>판별력만 필요하면 문제없음. <strong>확률이 필요하면 반드시 재보정</strong></li>
+</ul>
+</div>
+</div>
+</section>
+<section id="보정-방법" class="level3">
+<h3 class="anchored" data-anchor-id="보정-방법">4) 보정 방법</h3>
+<ul>
+<li><strong>Platt scaling</strong> — 예측 점수에 로지스틱 회귀를 한 번 더 적용</li>
+<li><strong>Isotonic regression</strong> — 단조 증가 제약만 두는 비모수 보정</li>
+<li>⚠️ 보정도 <strong>학습이므로 별도 데이터(또는 fold 안)에서</strong> 수행할 것</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="회귀-지표" class="level2">
+<h2 class="anchored" data-anchor-id="회귀-지표">6. 회귀 지표 📏</h2>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>지표</th>
+<th>특징</th>
+<th>주의</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>RMSE</strong></td>
+<td>원래 단위, 큰 오차에 민감</td>
+<td>이상치에 크게 흔들림</td>
+</tr>
+<tr class="even">
+<td><strong>MAE</strong></td>
+<td>원래 단위, 이상치에 robust</td>
+<td>미분 불가점 존재</td>
+</tr>
+<tr class="odd">
+<td><strong>R²</strong></td>
+<td>설명된 분산 비율</td>
+<td>test set에서는 음수 가능</td>
+</tr>
+<tr class="even">
+<td><strong>MAPE</strong></td>
+<td>상대 오차(%)</td>
+<td>실제값이 0 근처면 폭발</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>발현량·농도처럼 <strong>로그 스케일이 자연스러운 값</strong>은 로그 변환 후 평가</li>
+<li>지표는 <strong>의사결정 비용</strong>을 반영해 고를 것 — 과대예측과 과소예측의 대가가 다르면 비대칭 손실</li>
+</ul>
+<hr>
+</section>
+<section id="모델-비교" class="level2">
+<h2 class="anchored" data-anchor-id="모델-비교">7. 모델 비교 🆚</h2>
+<section id="차이가-우연인가" class="level3">
+<h3 class="anchored" data-anchor-id="차이가-우연인가">1) 차이가 우연인가</h3>
+<ul>
+<li>모델 A가 0.82, 모델 B가 0.79 — <strong>이 차이는 재현되는가?</strong></li>
+<li>교차검증 점수에는 분할 우연에 의한 변동이 섞여 있음</li>
+<li>점수 하나만 비교하는 것은 근거가 되지 못함</li>
+</ul>
+</section>
+<section id="paired-t-test" class="level3">
+<h3 class="anchored" data-anchor-id="paired-t-test">2) Paired t-test</h3>
+<ul>
+<li>같은 fold에서 두 모델의 성능 차이를 쌍으로 비교</li>
+<li>⚠️ <strong>교차검증 fold는 서로 독립이 아님</strong> — training set이 대부분 겹침</li>
+<li>→ 표준 paired t-test는 <strong>1종 오류가 부풀려짐</strong></li>
+<li>대안 — corrected resampled t-test (Nadeau &amp; Bengio 2003)</li>
+</ul>
+</section>
+<section id="mcnemar-검정" class="level3">
+<h3 class="anchored" data-anchor-id="mcnemar-검정">3) McNemar 검정</h3>
+<ul>
+<li><strong>같은 test set</strong>에서 두 모델의 예측이 갈린 샘플만 사용</li>
+<li>두 분류기를 한 번씩만 학습해도 적용 가능</li>
+<li>불일치 쌍 (A만 맞음, B만 맞음)의 비대칭성을 검정</li>
+</ul>
+</section>
+<section id="friedman-nemenyi" class="level3">
+<h3 class="anchored" data-anchor-id="friedman-nemenyi">4) Friedman + Nemenyi</h3>
+<ul>
+<li><strong>여러 모델 × 여러 데이터셋</strong>을 동시에 비교할 때</li>
+<li>Friedman — 모델 간 순위에 차이가 있는지 (비모수)</li>
+<li>유의하면 Nemenyi 사후검정 → critical difference diagram</li>
+<li>벤치마크 논문의 표준 절차 (Demšar 2006)</li>
+</ul>
+</section>
+<section id="다중-비교" class="level3">
+<h3 class="anchored" data-anchor-id="다중-비교">5) ⚠️ 다중 비교</h3>
+<ul>
+<li>모델 10개를 비교하면 우연히 “유의한” 차이가 나옴</li>
+<li>다중비교 보정 필수</li>
+<li><strong>성능 차이가 작으면, 단순한 모델을 고르는 것이 정당</strong> (Occam’s razor, W1)</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="bias-variance-decomposition" class="level2">
+<h2 class="anchored" data-anchor-id="bias-variance-decomposition">8. Bias-Variance Decomposition 🎲</h2>
+<section id="세-성분" class="level3">
+<h3 class="anchored" data-anchor-id="세-성분">1) 세 성분</h3>
+<ul>
+<li>같은 분포에서 뽑아도 training set이 달라지면 모델이 달라짐</li>
+<li><strong>Variance</strong> — training set 표집에 의한 예측값의 흔들림</li>
+<li><strong>Bias</strong> — 학습된 모델의 기대 예측값과 실제값의 차이</li>
+<li><strong>Noise</strong> — 가진 변수로는 설명 불가능한 부분. <strong>문제 자체의 난이도</strong>
+<ul>
+<li>기댓값 0으로 가정. 어떤 모델로도 줄일 수 없는 <strong>하한</strong></li>
+</ul></li>
+</ul>
+</section>
+<section id="분해식" class="level3">
+<h3 class="anchored" data-anchor-id="분해식">2) 분해식</h3>
+<p><span class="math display">\[\mathbb{E}\left[(y - \hat f(x))^2\right] = \underbrace{\text{Bias}^2}_{\text{모델의 한계}} + \underbrace{\text{Variance}}_{\text{표집의 흔들림}} + \underbrace{\sigma^2}_{\text{줄일 수 없음}}\]</span></p>
+</section>
+<section id="bias-variance-dilemma" class="level3">
+<h3 class="anchored" data-anchor-id="bias-variance-dilemma">3) Bias-variance dilemma</h3>
+<ul>
+<li>모델을 단순하게 → bias ↑, variance ↓ → <strong>underfitting</strong></li>
+<li>모델을 복잡하게 → bias ↓, variance ↑ → <strong>overfitting</strong></li>
+<li>generalization error를 최소화하는 <strong>중간 지점</strong>이 존재</li>
+<li>W3에서 본 복잡도 곡선의 U자 형태가 바로 이것</li>
+</ul>
+</section>
+<section id="실습-분해를-눈으로-보기" class="level3">
+<h3 class="anchored" data-anchor-id="실습-분해를-눈으로-보기">4) 🧪 실습: 분해를 눈으로 보기</h3>
+<ul>
+<li>진짜 함수 <span class="math inline">\(f(x) = \sin(2x)\)</span>, 잡음 <span class="math inline">\(\sigma = 0.5\)</span> → 이론적 하한 <span class="math inline">\(\sigma^2 = 0.25\)</span></li>
+<li>training set 200개를 새로 뽑아가며 깊이별로 트리를 적합</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(rpart)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyr)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>f <span class="ot">&lt;-</span> <span class="cf">function</span>(x) <span class="fu">sin</span>(<span class="dv">2</span> <span class="sc">*</span> x); sigma <span class="ot">&lt;-</span> <span class="fl">0.5</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>x_grid <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="sc">-</span><span class="fl">2.5</span>, <span class="fl">2.5</span>, <span class="at">length.out =</span> <span class="dv">60</span>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>bv <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">8</span>, <span class="cf">function</span>(depth) {</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># 같은 분포에서 training set을 200번 새로 뽑아 예측을 모음</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>  P <span class="ot">&lt;-</span> <span class="fu">sapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">200</span>, <span class="cf">function</span>(b) {</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    xt <span class="ot">&lt;-</span> <span class="fu">runif</span>(<span class="dv">80</span>, <span class="sc">-</span><span class="fl">2.5</span>, <span class="fl">2.5</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    dt <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">x =</span> xt, <span class="at">y =</span> <span class="fu">f</span>(xt) <span class="sc">+</span> <span class="fu">rnorm</span>(<span class="dv">80</span>, <span class="at">sd =</span> sigma))</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    m <span class="ot">&lt;-</span> <span class="fu">rpart</span>(y <span class="sc">~</span> x, dt,</span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>               <span class="at">control =</span> <span class="fu">rpart.control</span>(<span class="at">maxdepth =</span> depth, <span class="at">cp =</span> <span class="dv">0</span>, <span class="at">minsplit =</span> <span class="dv">2</span>))</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(m, <span class="fu">data.frame</span>(<span class="at">x =</span> x_grid))</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>  })</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">depth    =</span> depth,</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>             <span class="at">bias2    =</span> <span class="fu">mean</span>((<span class="fu">rowMeans</span>(P) <span class="sc">-</span> <span class="fu">f</span>(x_grid))<span class="sc">^</span><span class="dv">2</span>),</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>             <span class="at">variance =</span> <span class="fu">mean</span>(<span class="fu">apply</span>(P, <span class="dv">1</span>, var)),</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>             <span class="at">noise    =</span> sigma<span class="sc">^</span><span class="dv">2</span>)</span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>bv<span class="sc">$</span>total <span class="ot">&lt;-</span> bv<span class="sc">$</span>bias2 <span class="sc">+</span> bv<span class="sc">$</span>variance <span class="sc">+</span> bv<span class="sc">$</span>noise</span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(bv, <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>  depth bias2 variance noise total
+1     1 0.342    0.094  0.25 0.686
+2     2 0.153    0.186  0.25 0.589
+3     3 0.020    0.131  0.25 0.401
+4     4 0.005    0.129  0.25 0.384
+5     5 0.001    0.153  0.25 0.404
+6     6 0.001    0.186  0.25 0.437
+7     7 0.001    0.214  0.25 0.465
+8     8 0.001    0.235  0.25 0.487</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>long <span class="ot">&lt;-</span> <span class="fu">pivot_longer</span>(bv, <span class="fu">c</span>(bias2, variance, noise, total),</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>                     <span class="at">names_to =</span> <span class="st">"component"</span>, <span class="at">values_to =</span> <span class="st">"value"</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(long, <span class="fu">aes</span>(depth, value, <span class="at">colour =</span> component)) <span class="sc">+</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">9</span>) <span class="sc">+</span> <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.6</span>) <span class="sc">+</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> bv<span class="sc">$</span>depth[<span class="fu">which.min</span>(bv<span class="sc">$</span>total)], <span class="at">linetype =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="at">bias2 =</span> <span class="st">"#2e8b7a"</span>, <span class="at">variance =</span> <span class="st">"#d1495b"</span>,</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>                                 <span class="at">noise =</span> <span class="st">"grey55"</span>,  <span class="at">total =</span> <span class="st">"black"</span>)) <span class="sc">+</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Tree depth (model complexity)"</span>, <span class="at">y =</span> <span class="st">"Expected squared error"</span>,</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>       <span class="at">colour =</span> <span class="cn">NULL</span>, <span class="at">caption =</span> <span class="st">"dashed = minimum total error"</span>) <span class="sc">+</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="04_metrics_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="624"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><strong>bias²</strong> — 깊이가 늘수록 급격히 0으로 수렴</li>
+<li><strong>variance</strong> — 깊이가 늘수록 계속 증가</li>
+<li><strong>noise</strong> — 0.25에서 수평. <strong>어떤 모델도 이 아래로 못 감</strong></li>
+<li><strong>total</strong> — 둘의 합이 만드는 U자. 최소 지점이 최적 복잡도</li>
+<li>W9의 ensemble은 이 그림에서 <strong>variance를 깎는 전략</strong>(bagging)과 <strong>bias를 깎는 전략</strong>(boosting)으로 나뉨</li>
+</ul>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this ends up
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>불균형 처리 → W6 (class imbalance, threshold moving)</li>
+<li>Variance 감소 → W9 bagging·random forest</li>
+<li>Bias 감소 → W9 boosting</li>
+<li>보정과 보고 지침 → W14 (TRIPOD+AI)</li>
+</ul>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">📝 Summary</h2>
+<ul>
+<li><strong>Accuracy는 불균형에서 쓰지 말 것</strong> — 전원 음성으로 98%가 나옴</li>
+<li>Recall·specificity는 유병률과 무관, <strong>precision·NPV는 유병률에 크게 의존</strong></li>
+<li>지표는 <strong>모델이 어떻게 쓰일지</strong>를 정한 뒤에 고른다</li>
+<li>F score는 TN을 쓰지 않음. 불균형 다중 class 평균은 보통 macro</li>
+<li><strong>ROC-AUC는 불균형에서 후하다</strong> — AUC 0.849인 모델의 실제 precision은 0.057</li>
+<li>PR-AUC를 함께 보고하고, <strong>기준선이 유병률</strong>임을 명시</li>
+<li><strong>판별력과 보정은 다른 축</strong> — 다운샘플링은 AUC를 유지한 채 확률을 8배 부풀림</li>
+<li>모델 비교는 검정으로 — CV fold는 독립이 아니므로 corrected t-test 또는 McNemar</li>
+<li>Generalization error = <strong>bias² + variance + noise</strong>, noise는 줄일 수 없는 하한</li>
+</ul>
+</section>
+<section id="key-terms" class="level2">
+<h2 class="anchored" data-anchor-id="key-terms">🔑 Key terms</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>용어</th>
+<th>정의</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Recall / Sensitivity</strong></td>
+<td>실제 양성 중 맞게 잡아낸 비율</td>
+</tr>
+<tr class="even">
+<td><strong>Precision / PPV</strong></td>
+<td>양성으로 예측한 것 중 실제 양성 비율</td>
+</tr>
+<tr class="odd">
+<td><strong>Fβ score</strong></td>
+<td>precision·recall의 가중 조화평균. β&gt;1이면 recall 중시</td>
+</tr>
+<tr class="even">
+<td><strong>ROC curve / AUC</strong></td>
+<td>FPR-TPR 곡선과 그 아래 면적. 순위 능력</td>
+</tr>
+<tr class="odd">
+<td><strong>PR-AUC (AP)</strong></td>
+<td>recall-precision 곡선 면적. 기준선은 유병률</td>
+</tr>
+<tr class="even">
+<td><strong>Calibration</strong></td>
+<td>예측확률이 실제 발생률과 일치하는 정도</td>
+</tr>
+<tr class="odd">
+<td><strong>Brier score</strong></td>
+<td>예측확률과 실제값 차이의 제곱 평균. 낮을수록 좋음</td>
+</tr>
+<tr class="even">
+<td><strong>McNemar test</strong></td>
+<td>같은 test set에서 두 분류기의 불일치 쌍을 비교</td>
+</tr>
+<tr class="odd">
+<td><strong>Bias² / Variance / Noise</strong></td>
+<td>모델의 한계 / 표집의 흔들림 / 줄일 수 없는 하한</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="references" class="level2">
+<h2 class="anchored" data-anchor-id="references">➕ References</h2>
+<ul>
+<li>Dietterich TG. Approximate statistical tests for comparing supervised classification learning algorithms. <em>Neural Computation</em> 1998;10(7):1895–1923.</li>
+<li>Nadeau C, Bengio Y. Inference for the generalization error. <em>Machine Learning</em> 2003;52(3):239–281.</li>
+<li>Demšar J. Statistical comparisons of classifiers over multiple data sets. <em>JMLR</em> 2006;7:1–30.</li>
+<li>Saito T, Rehmsmeier M. The precision-recall plot is more informative than the ROC plot when evaluating binary classifiers on imbalanced datasets. <em>PLoS ONE</em> 2015;10(3):e0118432.</li>
+<li>Van Calster B, McLernon DJ, van Smeden M, Wynants L, Steyerberg EW. Calibration: the Achilles heel of predictive analytics. <em>BMC Medicine</em> 2019;17:230.</li>
+<li>Collins GS, Moons KGM, Dhiman P, et al.&nbsp;TRIPOD+AI statement: updated guidance for reporting clinical prediction models. <em>BMJ</em> 2024;385:e078378.</li>
+<li>Hastie T, Tibshirani R, Friedman J. <em>The Elements of Statistical Learning.</em> 2nd ed., Ch. 7. Springer, 2009.</li>
+</ul>
+<hr>
+<p><a href="../chapters/03_validation.html">← W3. 검증 설계</a></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<!-- AI Chat Widget 초기화 -->
+
+<!-- _quarto.yml의 include-after-body에 등록되어 모든 페이지에 자동 삽입됩니다 -->
+
+<script>
+
+  // ★ Cloudflare Worker 배포 후 URL로 교체하세요
+
+  const WORKER_URL = "https://falling-wave-447f.eh0129s.workers.dev/";
+
+
+
+  // 각 .qmd 파일의 YAML에서 ai-context를 읽어옵니다
+
+  // (없으면 빈 문자열 → 기본 안내 메시지)
+
+  const metaContext = document.querySelector('meta[name="ai-context"]');
+
+  const metaTitle   = document.querySelector('meta[name="ai-title"]') || { content: document.title };
+
+
+
+  window.AI_CHAT_CONFIG = {
+
+    workerUrl:      WORKER_URL,
+
+    chapterContext: metaContext ? metaContext.content : "",
+
+    chapterTitle:   metaTitle  ? metaTitle.content   : document.title,
+
+  };
+
+</script>
+
+<script src="../_extensions/ai-chat/ai-chat.js" defer=""></script>
+
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>Copyright 2026, Eunji</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+<script src="../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

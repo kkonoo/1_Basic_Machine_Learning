@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.7.32">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Eunji Ha">
+<meta name="dcterms.date" content="2026-09-21">
+<meta name="description" content="Hold-out, 교차검증, bootstrap, 그리고 nested CV">
+
+<title>W3. 검증 설계 – 1. Basic Machine Learning</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../images/logo.ico" rel="icon">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-234273d1456647dabc34a594ac50e507.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-b7acaf8b0572301ab572ffd94e5b5c34.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<meta name="ai-title" content="W3. 검증 설계">
+<meta name="ai-context" content="
+이 챕터는 모델 성능을 정직하게 추정하는 검증 설계를 다룹니다.
+Empirical error(training error)와 generalization error의 차이,
+overfitting과 underfitting을 복잡도 곡선으로 진단하는 법을 먼저 설명합니다.
+검증 방법으로 hold-out(stratified sampling, 반복 분할),
+k-fold cross validation, LOOCV, repeated CV, bootstrap과 out-of-bag(약 36.8%)을 다룹니다.
+분할은 데이터의 구조를 반영해야 합니다. 같은 환자의 여러 샘플이 train과 test에
+흩어지면 성능이 크게 부풀려집니다. 실습에서 환자 40명 x 반복 3회 데이터로
+무작위 분할은 정확도 0.975, 환자 단위 분할은 0.5가 나오는 것을 보입니다.
+배치 구조와 시간 구조도 같은 원리로 분할에 반영해야 합니다.
+Hyperparameter 튜닝에 사용한 교차검증 점수를 그대로 성능으로 보고하면
+낙관 편향이 생깁니다. 이를 피하려면 nested cross validation을 씁니다.
+신호가 없는 데이터에서 non-nested는 0.574, nested는 0.485로 나옵니다
+(Varma &amp; Simon 2006, Cawley &amp; Talbot 2010).
+교차검증이 추정하는 것은 특정 모델이 아니라 학습 절차의 성능이며,
+최종 모델은 전체 데이터로 같은 절차를 다시 적용해 만듭니다.
+">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../assets/html.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">1. Basic Machine Learning</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/kkonoo/1_Basic_Machine_Learning"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/03_validation.html">W3. 검증 설계</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Home</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Part 1. 기초</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/01_intro.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W1. Machine Learning이란 무엇인가</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/02_preprocessing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W2. 데이터 준비와 Feature Engineering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/03_validation.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">W3. 검증 설계</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/04_metrics.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W4. 성능 척도와 모델 비교</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/05_linear_model.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W5. 선형회귀와 로지스틱회귀</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/06_regularization.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W6. 정규화 · LDA · 다중분류 · 불균형</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/07_decision_tree.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W7. Decision Tree</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/09_ensemble.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W9. Ensemble Learning</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/10_svm.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W10. SVM과 Kernel Methods</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/11_bayes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W11. Bayesian Classifier</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/12_clustering.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W12. Clustering</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/13_dimension_reduction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W13. Dimension Reduction</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../chapters/14_interpretation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">W14. 모델 해석과 보고</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Contents</h2>
+   
+  <ul>
+  <li><a href="#두-가지-오차" id="toc-두-가지-오차" class="nav-link active" data-scroll-target="#두-가지-오차">1. 두 가지 오차 📉</a>
+  <ul>
+  <li><a href="#empirical-error와-generalization-error" id="toc-empirical-error와-generalization-error" class="nav-link" data-scroll-target="#empirical-error와-generalization-error">1) Empirical error와 generalization error</a></li>
+  <li><a href="#overfitting" id="toc-overfitting" class="nav-link" data-scroll-target="#overfitting">2) Overfitting</a></li>
+  <li><a href="#underfitting" id="toc-underfitting" class="nav-link" data-scroll-target="#underfitting">3) Underfitting</a></li>
+  <li><a href="#실습-복잡도-곡선으로-진단" id="toc-실습-복잡도-곡선으로-진단" class="nav-link" data-scroll-target="#실습-복잡도-곡선으로-진단">4) 🧪 실습: 복잡도 곡선으로 진단</a></li>
+  </ul></li>
+  <li><a href="#hold-out" id="toc-hold-out" class="nav-link" data-scroll-target="#hold-out">2. Hold-out ✂️</a>
+  <ul>
+  <li><a href="#절차" id="toc-절차" class="nav-link" data-scroll-target="#절차">1) 절차</a></li>
+  <li><a href="#stratified-sampling" id="toc-stratified-sampling" class="nav-link" data-scroll-target="#stratified-sampling">2) Stratified sampling</a></li>
+  <li><a href="#한-번-나눈-값을-믿지-말-것" id="toc-한-번-나눈-값을-믿지-말-것" class="nav-link" data-scroll-target="#한-번-나눈-값을-믿지-말-것">3) ⚠️ 한 번 나눈 값을 믿지 말 것</a></li>
+  <li><a href="#분할-비율" id="toc-분할-비율" class="nav-link" data-scroll-target="#분할-비율">4) 분할 비율</a></li>
+  </ul></li>
+  <li><a href="#교차검증" id="toc-교차검증" class="nav-link" data-scroll-target="#교차검증">3. 교차검증 🔁</a>
+  <ul>
+  <li><a href="#k-fold-cross-validation" id="toc-k-fold-cross-validation" class="nav-link" data-scroll-target="#k-fold-cross-validation">1) k-fold cross validation</a></li>
+  <li><a href="#loocv-leave-one-out-cv" id="toc-loocv-leave-one-out-cv" class="nav-link" data-scroll-target="#loocv-leave-one-out-cv">2) LOOCV (Leave-One-Out CV)</a></li>
+  <li><a href="#repeated-cv" id="toc-repeated-cv" class="nav-link" data-scroll-target="#repeated-cv">3) Repeated CV</a></li>
+  <li><a href="#k는-몇으로" id="toc-k는-몇으로" class="nav-link" data-scroll-target="#k는-몇으로">4) k는 몇으로?</a></li>
+  </ul></li>
+  <li><a href="#bootstrap" id="toc-bootstrap" class="nav-link" data-scroll-target="#bootstrap">4. Bootstrap 🎲</a>
+  <ul>
+  <li><a href="#복원추출" id="toc-복원추출" class="nav-link" data-scroll-target="#복원추출">1) 복원추출</a></li>
+  <li><a href="#out-of-bag-oob" id="toc-out-of-bag-oob" class="nav-link" data-scroll-target="#out-of-bag-oob">2) Out-of-bag (OOB)</a></li>
+  <li><a href="#언제-쓰나" id="toc-언제-쓰나" class="nav-link" data-scroll-target="#언제-쓰나">3) 언제 쓰나</a></li>
+  </ul></li>
+  <li><a href="#분할이-지켜야-할-구조" id="toc-분할이-지켜야-할-구조" class="nav-link" data-scroll-target="#분할이-지켜야-할-구조">5. 분할이 지켜야 할 구조 🧬</a>
+  <ul>
+  <li><a href="#그룹-구조" id="toc-그룹-구조" class="nav-link" data-scroll-target="#그룹-구조">1) 그룹 구조</a></li>
+  <li><a href="#실습-환자-단위-분할을-안-하면" id="toc-실습-환자-단위-분할을-안-하면" class="nav-link" data-scroll-target="#실습-환자-단위-분할을-안-하면">2) 🧪 실습: 환자 단위 분할을 안 하면</a></li>
+  <li><a href="#배치-구조" id="toc-배치-구조" class="nav-link" data-scroll-target="#배치-구조">3) 배치 구조</a></li>
+  <li><a href="#시간-구조" id="toc-시간-구조" class="nav-link" data-scroll-target="#시간-구조">4) 시간 구조</a></li>
+  </ul></li>
+  <li><a href="#튜닝과-nested-cv" id="toc-튜닝과-nested-cv" class="nav-link" data-scroll-target="#튜닝과-nested-cv">6. 튜닝과 nested CV 🎯</a>
+  <ul>
+  <li><a href="#hyper-parameter-vs-model-parameter" id="toc-hyper-parameter-vs-model-parameter" class="nav-link" data-scroll-target="#hyper-parameter-vs-model-parameter">1) Hyper-parameter vs model parameter</a></li>
+  <li><a href="#같은-cv로-고르고-같은-cv로-보고하면" id="toc-같은-cv로-고르고-같은-cv로-보고하면" class="nav-link" data-scroll-target="#같은-cv로-고르고-같은-cv로-보고하면">2) 같은 CV로 고르고 같은 CV로 보고하면</a></li>
+  <li><a href="#nested-cv" id="toc-nested-cv" class="nav-link" data-scroll-target="#nested-cv">3) Nested CV</a></li>
+  <li><a href="#실습-nested-vs-non-nested" id="toc-실습-nested-vs-non-nested" class="nav-link" data-scroll-target="#실습-nested-vs-non-nested">4) 🧪 실습: nested vs non-nested</a></li>
+  <li><a href="#탐색-전략" id="toc-탐색-전략" class="nav-link" data-scroll-target="#탐색-전략">5) 탐색 전략</a></li>
+  </ul></li>
+  <li><a href="#최종-모델-만들기" id="toc-최종-모델-만들기" class="nav-link" data-scroll-target="#최종-모델-만들기">7. 최종 모델 만들기 🏁</a>
+  <ul>
+  <li><a href="#교차검증이-추정하는-것" id="toc-교차검증이-추정하는-것" class="nav-link" data-scroll-target="#교차검증이-추정하는-것">1) 교차검증이 추정하는 것</a></li>
+  <li><a href="#전체-데이터로-재학습" id="toc-전체-데이터로-재학습" class="nav-link" data-scroll-target="#전체-데이터로-재학습">2) 전체 데이터로 재학습</a></li>
+  </ul></li>
+  <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">📝 Summary</a></li>
+  <li><a href="#key-terms" id="toc-key-terms" class="nav-link" data-scroll-target="#key-terms">🔑 Key terms</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">➕ References</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content column-body" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../chapters/01_intro.html">Part 1. 기초</a></li><li class="breadcrumb-item"><a href="../chapters/03_validation.html">W3. 검증 설계</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">W3. 검증 설계</h1>
+</div>
+
+<div>
+  <div class="description">
+    Hold-out, 교차검증, bootstrap, 그리고 nested CV
+  </div>
+</div>
+
+
+<div class="quarto-title-meta column-body">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Eunji Ha </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 21, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+🎯 Learning objectives
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>Empirical error와 generalization error를 구분할 수 있다</li>
+<li>복잡도 곡선으로 over/underfitting을 진단할 수 있다</li>
+<li>Hold-out · k-fold CV · LOOCV · bootstrap의 장단점을 비교할 수 있다</li>
+<li><strong>데이터의 그룹·배치·시간 구조를 분할에 반영할 수 있다</strong></li>
+<li><strong>튜닝과 평가를 분리해야 하는 이유를 설명하고 nested CV를 설계할 수 있다</strong></li>
+</ul>
+</div>
+</div>
+<blockquote class="blockquote">
+<p>🤔 <strong>교차검증까지 했는데, 왜 논문의 성능이 내 데이터에서 재현되지 않을까?</strong></p>
+</blockquote>
+<hr>
+<section id="두-가지-오차" class="level2">
+<h2 class="anchored" data-anchor-id="두-가지-오차">1. 두 가지 오차 📉</h2>
+<section id="empirical-error와-generalization-error" class="level3">
+<h3 class="anchored" data-anchor-id="empirical-error와-generalization-error">1) Empirical error와 generalization error</h3>
+<ul>
+<li><strong>Error rate</strong> — 잘못 분류한 샘플 수 / 전체 샘플 수</li>
+<li><strong>Accuracy</strong> — 1 − error rate</li>
+<li><strong>Empirical error</strong> (= training error) — 학습에 쓴 데이터에서의 오차</li>
+<li><strong>Generalization error</strong> — 못 본 데이터에서의 오차. <strong>machine learning의 진짜 목표</strong></li>
+<li>우리는 generalization error를 <strong>직접 계산할 수 없음</strong> → 추정해야 함</li>
+<li><strong>검증 설계 = generalization error를 편향 없이 추정하는 절차 설계</strong></li>
+</ul>
+</section>
+<section id="overfitting" class="level3">
+<h3 class="anchored" data-anchor-id="overfitting">2) Overfitting</h3>
+<ul>
+<li>empirical error는 작은데 generalization error는 큰 상태</li>
+<li>원인 — 모델의 학습 능력이 데이터의 실제 구조보다 과함</li>
+<li>징후 — training 성능과 validation 성능의 격차가 벌어짐</li>
+<li>대응 — 정규화(W6), pruning(W7), ensemble(W9), 데이터 증가</li>
+</ul>
+</section>
+<section id="underfitting" class="level3">
+<h3 class="anchored" data-anchor-id="underfitting">3) Underfitting</h3>
+<ul>
+<li>empirical error 자체가 큰 상태</li>
+<li>원인 — 모델의 학습 능력 부족, 또는 inductive bias가 문제와 불일치(W1)</li>
+<li>대응 — 모델 복잡도 증가, feature 추가·변환</li>
+</ul>
+</section>
+<section id="실습-복잡도-곡선으로-진단" class="level3">
+<h3 class="anchored" data-anchor-id="실습-복잡도-곡선으로-진단">4) 🧪 실습: 복잡도 곡선으로 진단</h3>
+<ul>
+<li>비선형 관계 <span class="math inline">\(y = 2\sin(x) + \varepsilon\)</span> 에 decision tree를 깊이별로 적합</li>
+<li>training MSE와 test MSE를 함께 관찰</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(rpart)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>sim <span class="ot">&lt;-</span> <span class="cf">function</span>(n) {</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> <span class="fu">runif</span>(n, <span class="sc">-</span><span class="dv">3</span>, <span class="dv">3</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">x =</span> x, <span class="at">y =</span> <span class="dv">2</span> <span class="sc">*</span> <span class="fu">sin</span>(x) <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="at">sd =</span> <span class="fl">0.6</span>))</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>train <span class="ot">&lt;-</span> <span class="fu">sim</span>(<span class="dv">300</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>test  <span class="ot">&lt;-</span> <span class="fu">sim</span>(<span class="dv">1000</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>curve <span class="ot">&lt;-</span> <span class="fu">do.call</span>(rbind, <span class="fu">lapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">12</span>, <span class="cf">function</span>(d) {</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  m <span class="ot">&lt;-</span> <span class="fu">rpart</span>(y <span class="sc">~</span> x, <span class="at">data =</span> train,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>             <span class="at">control =</span> <span class="fu">rpart.control</span>(<span class="at">maxdepth =</span> d, <span class="at">cp =</span> <span class="dv">0</span>, <span class="at">minsplit =</span> <span class="dv">2</span>))</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">data.frame</span>(<span class="at">depth =</span> d,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>             <span class="at">Train =</span> <span class="fu">mean</span>((<span class="fu">predict</span>(m, train) <span class="sc">-</span> train<span class="sc">$</span>y)<span class="sc">^</span><span class="dv">2</span>),</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>             <span class="at">Test  =</span> <span class="fu">mean</span>((<span class="fu">predict</span>(m, test)  <span class="sc">-</span> test<span class="sc">$</span>y)<span class="sc">^</span><span class="dv">2</span>))</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>}))</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(curve, <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   depth Train  Test
+1      1 0.648 0.768
+2      2 0.474 0.529
+3      3 0.356 0.446
+4      4 0.306 0.399
+5      5 0.255 0.406
+6      6 0.218 0.461
+7      7 0.181 0.487
+8      8 0.147 0.509
+9      9 0.111 0.535
+10    10 0.081 0.549
+11    11 0.052 0.597
+12    12 0.030 0.615</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>best <span class="ot">&lt;-</span> curve<span class="sc">$</span>depth[<span class="fu">which.min</span>(curve<span class="sc">$</span>Test)]</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(tidyr<span class="sc">::</span><span class="fu">pivot_longer</span>(curve, <span class="sc">-</span>depth, <span class="at">names_to =</span> <span class="st">"set"</span>, <span class="at">values_to =</span> <span class="st">"mse"</span>),</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>       <span class="fu">aes</span>(depth, mse, <span class="at">colour =</span> set)) <span class="sc">+</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">linewidth =</span> .<span class="dv">9</span>) <span class="sc">+</span> <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.8</span>) <span class="sc">+</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> best, <span class="at">linetype =</span> <span class="dv">2</span>) <span class="sc">+</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_colour_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="at">Train =</span> <span class="st">"#2e8b7a"</span>, <span class="at">Test =</span> <span class="st">"#d1495b"</span>)) <span class="sc">+</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x =</span> <span class="st">"Tree depth (model complexity)"</span>, <span class="at">y =</span> <span class="st">"MSE"</span>, <span class="at">colour =</span> <span class="cn">NULL</span>,</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="fu">paste0</span>(<span class="st">"dashed line = best test MSE at depth "</span>, best)) <span class="sc">+</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="03_validation_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="624"></p>
+</figure>
+</div>
+</div>
+</div>
+<ul>
+<li><strong>읽는 법</strong>
+<ul>
+<li>왼쪽(얕은 트리) — 둘 다 높음 → <strong>underfitting</strong></li>
+<li>점선 지점 — test MSE 최소 → 적정 복잡도</li>
+<li>오른쪽(깊은 트리) — train은 계속 내려가는데 test는 상승 → <strong>overfitting</strong></li>
+</ul></li>
+<li>training error가 줄어드는 것은 <strong>아무 정보도 아님</strong></li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="hold-out" class="level2">
+<h2 class="anchored" data-anchor-id="hold-out">2. Hold-out ✂️</h2>
+<section id="절차" class="level3">
+<h3 class="anchored" data-anchor-id="절차">1) 절차</h3>
+<ul>
+<li>데이터 <span class="math inline">\(D\)</span> 를 서로소인 두 집합으로 분할 — training set / test set</li>
+<li>training set으로 학습, test set으로 평가</li>
+<li>⚠️ <strong>validation set은 학습에 쓰지 않음</strong> — 이름이 비슷해 혼동 주의</li>
+</ul>
+</section>
+<section id="stratified-sampling" class="level3">
+<h3 class="anchored" data-anchor-id="stratified-sampling">2) Stratified sampling</h3>
+<ul>
+<li>두 집합의 <strong>분포가 같도록</strong> 나눌 것</li>
+<li>분류 — class 비율 유지</li>
+<li>오믹스 — class + 배치 + 성별 등 <strong>다중 층화</strong> 필요</li>
+<li>층화하지 않으면 분할 자체가 성능 변동의 주된 원인이 됨</li>
+</ul>
+</section>
+<section id="한-번-나눈-값을-믿지-말-것" class="level3">
+<h3 class="anchored" data-anchor-id="한-번-나눈-값을-믿지-말-것">3) ⚠️ 한 번 나눈 값을 믿지 말 것</h3>
+<ul>
+<li>한 번의 분할 결과는 우연의 영향이 큼</li>
+<li>N번 반복 분할 → 오차의 <strong>평균</strong>을 validation error로 사용</li>
+<li>표본이 작을수록 반복 횟수를 늘릴 것</li>
+</ul>
+</section>
+<section id="분할-비율" class="level3">
+<h3 class="anchored" data-anchor-id="분할-비율">4) 분할 비율</h3>
+<ul>
+<li>일반적으로 training : test = 2:1 ~ 4:1</li>
+<li>training을 늘리면 — 모델은 좋아지지만 평가가 불안정</li>
+<li>test를 늘리면 — 평가는 안정되지만 모델이 나빠짐</li>
+<li><strong>표본이 작으면 hold-out 대신 교차검증</strong></li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="교차검증" class="level2">
+<h2 class="anchored" data-anchor-id="교차검증">3. 교차검증 🔁</h2>
+<section id="k-fold-cross-validation" class="level3">
+<h3 class="anchored" data-anchor-id="k-fold-cross-validation">1) k-fold cross validation</h3>
+<ul>
+<li><span class="math inline">\(D\)</span> 를 서로소인 <span class="math inline">\(k\)</span> 개 부분집합으로 분할 (stratified sampling)</li>
+<li>매 회 1개를 test, 나머지 <span class="math inline">\(k-1\)</span> 개를 training으로 사용</li>
+<li><span class="math inline">\(k\)</span> 번 반복해 얻은 오차의 평균 = validation error</li>
+<li><strong>모든 샘플이 정확히 한 번씩 test에 사용됨</strong></li>
+</ul>
+</section>
+<section id="loocv-leave-one-out-cv" class="level3">
+<h3 class="anchored" data-anchor-id="loocv-leave-one-out-cv">2) LOOCV (Leave-One-Out CV)</h3>
+<ul>
+<li><span class="math inline">\(k\)</span> = 샘플 수. 매 회 1개만 test</li>
+<li>장점 — 분할 방법의 영향을 받지 않음, 편향 작음</li>
+<li>단점 — <span class="math inline">\(n\)</span> 번 학습해야 함, <strong>추정의 분산이 큼</strong></li>
+<li><span class="math inline">\(n\)</span> 이 작을 때만 현실적</li>
+</ul>
+</section>
+<section id="repeated-cv" class="level3">
+<h3 class="anchored" data-anchor-id="repeated-cv">3) Repeated CV</h3>
+<ul>
+<li>k-fold CV를 서로 다른 분할로 여러 번 반복</li>
+<li>분할 우연성에 의한 변동을 줄임</li>
+<li>보고 시 <strong>평균과 함께 표준편차를 제시</strong>할 것</li>
+</ul>
+</section>
+<section id="k는-몇으로" class="level3">
+<h3 class="anchored" data-anchor-id="k는-몇으로">4) k는 몇으로?</h3>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>k</th>
+<th>편향</th>
+<th>분산</th>
+<th>계산량</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>작음 (예: 3)</td>
+<td>큼</td>
+<td>작음</td>
+<td>적음</td>
+</tr>
+<tr class="even">
+<td>보통 (5–10)</td>
+<td>적당</td>
+<td>적당</td>
+<td>적당</td>
+</tr>
+<tr class="odd">
+<td>n (LOOCV)</td>
+<td>작음</td>
+<td>큼</td>
+<td>매우 큼</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>실무 기본 — <strong>5-fold 또는 10-fold</strong>, 표본이 작으면 repeated 5-fold</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="bootstrap" class="level2">
+<h2 class="anchored" data-anchor-id="bootstrap">4. Bootstrap 🎲</h2>
+<section id="복원추출" class="level3">
+<h3 class="anchored" data-anchor-id="복원추출">1) 복원추출</h3>
+<ul>
+<li>모든 데이터를 학습에 쓰고 싶을 때</li>
+<li><span class="math inline">\(D\)</span> 에서 <span class="math inline">\(m\)</span> 개를 <strong>복원추출</strong>해 <span class="math inline">\(D'\)</span> 생성 → 학습에 사용</li>
+</ul>
+</section>
+<section id="out-of-bag-oob" class="level3">
+<h3 class="anchored" data-anchor-id="out-of-bag-oob">2) Out-of-bag (OOB)</h3>
+<ul>
+<li>한 샘플이 <span class="math inline">\(D'\)</span> 에 한 번도 뽑히지 않을 확률</li>
+</ul>
+<p><span class="math display">\[\lim_{m \to \infty}\left(1 - \frac{1}{m}\right)^{m} = \frac{1}{e} \approx 0.368\]</span></p>
+<ul>
+<li>즉 약 <strong>36.8%</strong>가 미사용 → 이 샘플들로 성능 추정 가능(<strong>OOB 추정</strong>)</li>
+<li>Random forest가 별도 검증 없이 성능을 내는 원리 (W9)</li>
+</ul>
+</section>
+<section id="언제-쓰나" class="level3">
+<h3 class="anchored" data-anchor-id="언제-쓰나">3) 언제 쓰나</h3>
+<ul>
+<li><strong>쓸 때</strong> — 표본이 매우 작을 때, ensemble의 내부 추정</li>
+<li><strong>주의</strong> — <span class="math inline">\(D'\)</span> 는 원래 <span class="math inline">\(D\)</span> 와 분포가 달라짐(중복 샘플 존재)</li>
+<li><span class="math inline">\(n\)</span> 이 충분하면 hold-out이나 교차검증이 더 안전</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="분할이-지켜야-할-구조" class="level2">
+<h2 class="anchored" data-anchor-id="분할이-지켜야-할-구조">5. 분할이 지켜야 할 구조 🧬</h2>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+무작위 분할은 기본값이지 정답이 아니다
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>데이터에 <strong>그룹·배치·시간 구조</strong>가 있으면 무작위 분할은 leakage가 됨</li>
+<li>“샘플이 독립”이라는 가정이 깨지는 순간 교차검증은 의미를 잃음</li>
+</ul>
+</div>
+</div>
+<section id="그룹-구조" class="level3">
+<h3 class="anchored" data-anchor-id="그룹-구조">1) 그룹 구조</h3>
+<ul>
+<li>같은 환자의 여러 조직·시점 샘플</li>
+<li>같은 세포주에서 나온 여러 배양 반복</li>
+<li>같은 개체에서 나온 여러 세포(단일세포)</li>
+<li>→ <strong>그룹 전체가 같은 fold에 들어가야 함</strong> (group k-fold)</li>
+</ul>
+</section>
+<section id="실습-환자-단위-분할을-안-하면" class="level3">
+<h3 class="anchored" data-anchor-id="실습-환자-단위-분할을-안-하면">2) 🧪 실습: 환자 단위 분할을 안 하면</h3>
+<ul>
+<li>설계 — 환자 40명 × 기술 반복 3회 = 샘플 120개, feature 50개</li>
+<li>환자마다 고유 프로파일이 있고, <strong>class는 환자에게 무작위 배정</strong></li>
+<li>즉 feature로 class를 맞힐 실제 신호는 <strong>0</strong></li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(class)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>n_pat <span class="ot">&lt;-</span> <span class="dv">40</span>; n_rep <span class="ot">&lt;-</span> <span class="dv">3</span>; p <span class="ot">&lt;-</span> <span class="dv">50</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>pat <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span>n_pat, <span class="at">each =</span> n_rep)</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 환자 고유 프로파일 + 측정 잡음</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>pat_profile <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n_pat <span class="sc">*</span> p, <span class="at">sd =</span> <span class="dv">2</span>), n_pat, p)</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>X <span class="ot">&lt;-</span> pat_profile[pat, ] <span class="sc">+</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n_pat <span class="sc">*</span> n_rep <span class="sc">*</span> p, <span class="at">sd =</span> <span class="fl">0.5</span>),</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>                                 n_pat <span class="sc">*</span> n_rep, p)</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co"># class는 환자 단위로 무작위 배정 → feature와 무관</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="fu">factor</span>(<span class="fu">sample</span>(<span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">"A"</span>, <span class="st">"B"</span>), <span class="at">each =</span> n_pat <span class="sc">/</span> <span class="dv">2</span>))[pat])</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>acc <span class="ot">&lt;-</span> <span class="cf">function</span>(tr, te, <span class="at">k =</span> <span class="dv">1</span>) <span class="fu">mean</span>(<span class="fu">knn</span>(X[tr, ], X[te, ], y[tr], <span class="at">k =</span> k) <span class="sc">==</span> y[te])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ❌ 무작위 분할 — 같은 환자의 반복이 train/test에 흩어짐</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>f_random <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="at">length.out =</span> <span class="fu">length</span>(y)))</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>a_random <span class="ot">&lt;-</span> <span class="fu">sapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="cf">function</span>(f) <span class="fu">acc</span>(f_random <span class="sc">!=</span> f, f_random <span class="sc">==</span> f))</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a><span class="co"># ✅ 환자 단위 분할 — 한 환자는 통째로 한 fold에</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>fold_of_patient <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="at">length.out =</span> n_pat))</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>f_group <span class="ot">&lt;-</span> fold_of_patient[pat]</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>a_group <span class="ot">&lt;-</span> <span class="fu">sapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="cf">function</span>(f) <span class="fu">acc</span>(f_group <span class="sc">!=</span> f, f_group <span class="sc">==</span> f))</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">split    =</span> <span class="fu">c</span>(<span class="st">"Random split"</span>, <span class="st">"Patient-level split"</span>),</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">accuracy =</span> <span class="fu">round</span>(<span class="fu">c</span>(<span class="fu">mean</span>(a_random), <span class="fu">mean</span>(a_group)), <span class="dv">3</span>)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                split accuracy
+1        Random split    0.975
+2 Patient-level split    0.500</code></pre>
+</div>
+</div>
+<ul>
+<li><strong>무작위 분할 ≈ 0.98</strong> — 신호가 0인 데이터에서</li>
+<li>원인 — test 샘플의 <strong>가장 가까운 이웃이 같은 환자의 다른 반복</strong></li>
+<li>모델이 배운 것은 질환이 아니라 <strong>환자의 신원</strong></li>
+<li>환자 단위로 나누면 즉시 0.5로 내려옴</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+⚠️ 단일세포 데이터에서 특히 위험
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>세포 단위로 무작위 분할하면 같은 개체의 세포가 양쪽에 흩어짐</li>
+<li>세포 수가 많아 통계적으로 “충분해 보이는” 착시까지 겹침</li>
+<li><strong>분할 단위는 세포가 아니라 개체(donor)</strong></li>
+</ul>
+</div>
+</div>
+</section>
+<section id="배치-구조" class="level3">
+<h3 class="anchored" data-anchor-id="배치-구조">3) 배치 구조</h3>
+<ul>
+<li>시퀀싱 런, 플레이트, 병원, 스캐너 — 모두 배치</li>
+<li>배치가 class와 얽혀 있으면(confounded) 어떤 검증도 구제 불가</li>
+<li>최소한 <strong>배치를 층화</strong>, 가능하면 <strong>leave-one-batch-out</strong> 평가</li>
+</ul>
+</section>
+<section id="시간-구조" class="level3">
+<h3 class="anchored" data-anchor-id="시간-구조">4) 시간 구조</h3>
+<ul>
+<li>미래 정보로 과거를 예측하면 안 됨</li>
+<li>전향적 예측 모델 — 시점 기준 분할(time-based split)</li>
+<li>⚠️ 무작위 CV는 시계열에서 항상 낙관적</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="튜닝과-nested-cv" class="level2">
+<h2 class="anchored" data-anchor-id="튜닝과-nested-cv">6. 튜닝과 nested CV 🎯</h2>
+<section id="hyper-parameter-vs-model-parameter" class="level3">
+<h3 class="anchored" data-anchor-id="hyper-parameter-vs-model-parameter">1) Hyper-parameter vs model parameter</h3>
+<ul>
+<li><strong>Hyper-parameter</strong> — 알고리즘의 설정값. 사람이 정함. 보통 10개 내외
+<ul>
+<li>kNN의 <span class="math inline">\(k\)</span>, 트리의 깊이, Lasso의 <span class="math inline">\(\lambda\)</span>, SVM의 <span class="math inline">\(C\)</span>·<span class="math inline">\(\gamma\)</span></li>
+</ul></li>
+<li><strong>Model parameter</strong> — 학습으로 결정되는 값. 매우 많을 수 있음
+<ul>
+<li>회귀계수, 신경망 weight</li>
+</ul></li>
+<li>모든 조합을 탐색하는 것은 불가능 → <strong>탐색 범위와 간격을 먼저 정의</strong></li>
+</ul>
+</section>
+<section id="같은-cv로-고르고-같은-cv로-보고하면" class="level3">
+<h3 class="anchored" data-anchor-id="같은-cv로-고르고-같은-cv로-보고하면">2) 같은 CV로 고르고 같은 CV로 보고하면</h3>
+<ul>
+<li>후보 30개의 CV 점수를 구하고 <strong>최고값을 성능으로 보고</strong>한다고 하자</li>
+<li>각 점수에는 우연 변동이 섞여 있음</li>
+<li>여러 개 중 <strong>최댓값</strong>을 고르는 순간, 그 값은 우연을 함께 고른 것</li>
+<li>→ <strong>낙관 편향</strong>. 후보 수가 많을수록 심해짐</li>
+</ul>
+</section>
+<section id="nested-cv" class="level3">
+<h3 class="anchored" data-anchor-id="nested-cv">3) Nested CV</h3>
+<pre><code>바깥 루프 (성능 추정)
+  ├─ fold 1을 test로 빼둠
+  │    안쪽 루프 (하이퍼파라미터 선택)
+  │      └─ 남은 데이터만으로 CV → 최적 설정 결정
+  │    선택된 설정으로 학습 → fold 1에서 평가
+  ├─ fold 2를 test로 빼둠 …
+  └─ 바깥 fold 성능의 평균 = 정직한 추정</code></pre>
+<ul>
+<li><strong>바깥 루프의 test fold는 튜닝에 단 한 번도 사용되지 않음</strong></li>
+<li>보고할 성능은 바깥 루프의 평균</li>
+</ul>
+</section>
+<section id="실습-nested-vs-non-nested" class="level3">
+<h3 class="anchored" data-anchor-id="실습-nested-vs-non-nested">4) 🧪 실습: nested vs non-nested</h3>
+<ul>
+<li>신호가 0인 데이터(n=100, p=100), kNN의 <span class="math inline">\(k \in \{1,\dots,30\}\)</span> 탐색</li>
+<li>두 방식의 차이를 20회 반복해 평균</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">2026</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">100</span>; p <span class="ot">&lt;-</span> <span class="dv">100</span>; ks <span class="ot">&lt;-</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">30</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>one_rep <span class="ot">&lt;-</span> <span class="cf">function</span>() {</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  X <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(n <span class="sc">*</span> p), n, p)</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  y <span class="ot">&lt;-</span> <span class="fu">factor</span>(<span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">"A"</span>, <span class="st">"B"</span>), <span class="at">each =</span> n <span class="sc">/</span> <span class="dv">2</span>))       <span class="co"># 신호 없음</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>  cv <span class="ot">&lt;-</span> <span class="cf">function</span>(idx, folds, k) <span class="fu">mean</span>(<span class="fu">sapply</span>(<span class="fu">unique</span>(folds), <span class="cf">function</span>(f) {</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    tr <span class="ot">&lt;-</span> idx[folds <span class="sc">!=</span> f]; te <span class="ot">&lt;-</span> idx[folds <span class="sc">==</span> f]</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mean</span>(<span class="fu">knn</span>(X[tr, ], X[te, ], y[tr], <span class="at">k =</span> k) <span class="sc">==</span> y[te])</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>  }))</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>  outer <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="at">length.out =</span> n))</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ❌ non-nested — 같은 CV로 k를 고르고, 그 최고점을 성능으로 보고</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>  non_nested <span class="ot">&lt;-</span> <span class="fu">max</span>(<span class="fu">sapply</span>(ks, <span class="cf">function</span>(k) <span class="fu">cv</span>(<span class="dv">1</span><span class="sc">:</span>n, outer, k)))</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>  <span class="co"># ✅ nested — 바깥 fold를 빼두고, 안쪽에서만 k를 고름</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>  nested <span class="ot">&lt;-</span> <span class="fu">mean</span>(<span class="fu">sapply</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="cf">function</span>(f) {</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    tr <span class="ot">&lt;-</span> <span class="fu">which</span>(outer <span class="sc">!=</span> f); te <span class="ot">&lt;-</span> <span class="fu">which</span>(outer <span class="sc">==</span> f)</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    inner <span class="ot">&lt;-</span> <span class="fu">sample</span>(<span class="fu">rep</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>, <span class="at">length.out =</span> <span class="fu">length</span>(tr)))</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>    best  <span class="ot">&lt;-</span> ks[<span class="fu">which.max</span>(<span class="fu">sapply</span>(ks, <span class="cf">function</span>(k) <span class="fu">cv</span>(tr, inner, k)))]</span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mean</span>(<span class="fu">knn</span>(X[tr, ], X[te, ], y[tr], <span class="at">k =</span> best) <span class="sc">==</span> y[te])</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>  }))</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a>  <span class="fu">c</span>(<span class="st">`</span><span class="at">non-nested</span><span class="st">`</span> <span class="ot">=</span> non_nested, <span class="at">nested =</span> nested)</span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a><span class="fu">round</span>(<span class="fu">colMeans</span>(<span class="fu">t</span>(<span class="fu">replicate</span>(<span class="dv">20</span>, <span class="fu">one_rep</span>()))), <span class="dv">3</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>non-nested     nested 
+     0.574      0.485 </code></pre>
+</div>
+</div>
+<ul>
+<li>진실은 0.5. <strong>non-nested만 체계적으로 위에 있음</strong></li>
+<li>차이가 커 보이지 않아도, 논문에서는 이 정도가 “유망한 바이오마커”가 됨</li>
+<li>후보 수를 늘릴수록, 표본이 작을수록 편향은 커짐</li>
+</ul>
+</section>
+<section id="탐색-전략" class="level3">
+<h3 class="anchored" data-anchor-id="탐색-전략">5) 탐색 전략</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>전략</th>
+<th>특징</th>
+<th>적합한 상황</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Grid search</td>
+<td>격자 전수 탐색</td>
+<td>하이퍼파라미터 1–2개</td>
+</tr>
+<tr class="even">
+<td>Random search</td>
+<td>무작위 샘플링</td>
+<td>3개 이상, 중요도가 불균등할 때</td>
+</tr>
+<tr class="odd">
+<td>Bayesian optimization</td>
+<td>이전 결과로 다음 후보 결정</td>
+<td>학습 비용이 클 때</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="최종-모델-만들기" class="level2">
+<h2 class="anchored" data-anchor-id="최종-모델-만들기">7. 최종 모델 만들기 🏁</h2>
+<section id="교차검증이-추정하는-것" class="level3">
+<h3 class="anchored" data-anchor-id="교차검증이-추정하는-것">1) 교차검증이 추정하는 것</h3>
+<ul>
+<li>CV는 특정 모델 하나의 성능이 아니라 <strong>학습 절차(procedure)의 성능</strong>을 추정</li>
+<li>fold마다 다른 모델이 만들어짐 — 그 중 하나를 고르는 것이 아님</li>
+</ul>
+</section>
+<section id="전체-데이터로-재학습" class="level3">
+<h3 class="anchored" data-anchor-id="전체-데이터로-재학습">2) 전체 데이터로 재학습</h3>
+<ul>
+<li>절차가 정해졌으면, <strong>같은 절차를 전체 데이터에 한 번 더 적용</strong>해 최종 모델 생성</li>
+<li>보고할 성능은 CV에서 얻은 추정치</li>
+<li>⚠️ 최종 모델을 다시 평가할 데이터는 남아 있지 않음 → <strong>외부 코호트 검증</strong>(W14)</li>
+</ul>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this ends up
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>여기서 정한 검증 틀 위에 W4의 성능 척도가 올라감</li>
+<li>fold 안에서 전처리를 반복하는 구조 → W2의 파이프라인과 동일한 원리</li>
+<li>OOB 추정 → W9의 random forest</li>
+<li>복잡도 곡선의 U자 형태 → W4의 bias-variance decomposition</li>
+</ul>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="summary" class="level2">
+<h2 class="anchored" data-anchor-id="summary">📝 Summary</h2>
+<ul>
+<li>목표는 empirical error가 아니라 <strong>generalization error</strong></li>
+<li>복잡도 곡선 — train은 계속 내려가고 test가 올라가는 지점이 overfitting의 시작</li>
+<li>Hold-out은 층화하고 <strong>반복</strong>할 것. 한 번 나눈 값은 우연</li>
+<li>실무 기본은 <strong>5-fold 또는 10-fold CV</strong>, 표본이 작으면 repeated</li>
+<li>Bootstrap의 OOB는 약 <strong>36.8%</strong> — random forest의 내부 검증 원리</li>
+<li><strong>분할 단위는 샘플이 아니라 그룹</strong> — 환자 단위 분할 실패 시 난수 데이터로 정확도 0.98</li>
+<li>배치는 층화, 시간은 시점 기준 분할</li>
+<li><strong>튜닝에 쓴 CV 점수를 성능으로 보고하면 낙관 편향</strong> → nested CV</li>
+<li>CV는 절차의 성능을 추정 — 최종 모델은 전체 데이터로 재학습</li>
+</ul>
+</section>
+<section id="key-terms" class="level2">
+<h2 class="anchored" data-anchor-id="key-terms">🔑 Key terms</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>용어</th>
+<th>정의</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Empirical error</strong></td>
+<td>학습에 사용한 데이터에서의 오차 (= training error)</td>
+</tr>
+<tr class="even">
+<td><strong>Generalization error</strong></td>
+<td>못 본 데이터에서의 오차. 추정 대상</td>
+</tr>
+<tr class="odd">
+<td><strong>Hold-out</strong></td>
+<td>데이터를 training/test로 한 번 나누어 평가</td>
+</tr>
+<tr class="even">
+<td><strong>Stratified sampling</strong></td>
+<td>분할 시 class 등 분포를 동일하게 유지</td>
+</tr>
+<tr class="odd">
+<td><strong>k-fold CV</strong></td>
+<td>k개 부분집합으로 나눠 번갈아 test로 사용</td>
+</tr>
+<tr class="even">
+<td><strong>LOOCV</strong></td>
+<td>k = n인 교차검증</td>
+</tr>
+<tr class="odd">
+<td><strong>Out-of-bag</strong></td>
+<td>복원추출에서 뽑히지 않은 약 36.8%로 성능 추정</td>
+</tr>
+<tr class="even">
+<td><strong>Group k-fold</strong></td>
+<td>같은 그룹(환자·개체)을 통째로 한 fold에 배치</td>
+</tr>
+<tr class="odd">
+<td><strong>Nested CV</strong></td>
+<td>바깥은 성능 추정, 안쪽은 하이퍼파라미터 선택</td>
+</tr>
+<tr class="even">
+<td><strong>Optimistic bias</strong></td>
+<td>여러 후보 중 최고점을 성능으로 보고할 때 생기는 과대추정</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="references" class="level2">
+<h2 class="anchored" data-anchor-id="references">➕ References</h2>
+<ul>
+<li>Kohavi R. A study of cross-validation and bootstrap for accuracy estimation and model selection. <em>IJCAI</em> 1995;1137–1143.</li>
+<li>Efron B, Tibshirani R. Improvements on cross-validation: the .632+ bootstrap method. <em>JASA</em> 1997;92(438):548–560.</li>
+<li>Varma S, Simon R. Bias in error estimation when using cross-validation for model selection. <em>BMC Bioinformatics</em> 2006;7:91.</li>
+<li>Cawley GC, Talbot NLC. On over-fitting in model selection and subsequent selection bias in performance evaluation. <em>JMLR</em> 2010;11:2079–2107.</li>
+<li>Roberts DR, et al.&nbsp;Cross-validation strategies for data with temporal, spatial, hierarchical, or phylogenetic structure. <em>Ecography</em> 2017;40(8):913–929.</li>
+<li>Whalen S, Schreiber J, Noble WS, Pollard KS. Navigating the pitfalls of applying machine learning in genomics. <em>Nature Reviews Genetics</em> 2022;23:169–181.</li>
+<li>Hastie T, Tibshirani R, Friedman J. <em>The Elements of Statistical Learning.</em> 2nd ed., Ch. 7. Springer, 2009.</li>
+</ul>
+<hr>
+<p><a href="../chapters/02_preprocessing.html">← W2. 데이터 준비와 Feature Engineering</a></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<!-- AI Chat Widget 초기화 -->
+
+<!-- _quarto.yml의 include-after-body에 등록되어 모든 페이지에 자동 삽입됩니다 -->
+
+<script>
+
+  // ★ Cloudflare Worker 배포 후 URL로 교체하세요
+
+  const WORKER_URL = "https://falling-wave-447f.eh0129s.workers.dev/";
+
+
+
+  // 각 .qmd 파일의 YAML에서 ai-context를 읽어옵니다
+
+  // (없으면 빈 문자열 → 기본 안내 메시지)
+
+  const metaContext = document.querySelector('meta[name="ai-context"]');
+
+  const metaTitle   = document.querySelector('meta[name="ai-title"]') || { content: document.title };
+
+
+
+  window.AI_CHAT_CONFIG = {
+
+    workerUrl:      WORKER_URL,
+
+    chapterContext: metaContext ? metaContext.content : "",
+
+    chapterTitle:   metaTitle  ? metaTitle.content   : document.title,
+
+  };
+
+</script>
+
+<script src="../_extensions/ai-chat/ai-chat.js" defer=""></script>
+
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>Copyright 2026, Eunji</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+<script src="../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

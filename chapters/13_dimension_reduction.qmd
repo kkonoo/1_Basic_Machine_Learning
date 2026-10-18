@@ -352,6 +352,15 @@ c(max_abs_loading_diff_up_to_sign = signif(max(sapply(1:3, function(k)
 -   세 방법의 고유값이 소수점 넷째 자리까지 같고, loading 차이는 $10^{-15}$ 수준(부호만 다를 수 있음)
 -   ⚠️ **PC의 부호는 임의입니다.** 같은 데이터로 다시 돌려도 PC1이 뒤집힐 수 있으니, 부호에 생물학적 의미를 붙이지 마세요
 
+**직접 해 보기** — [PCA·SVD: 저랭크 근사 ↗](https://kkonoo.github.io/edu_sims/sims/pca-svd/?lang=ko){target="_blank"}
+
+::: {.column-page}
+```{=html}
+<iframe src="https://kkonoo.github.io/edu_sims/sims/pca-svd/?embed=1&lang=ko" title="PCA·SVD: 저랭크 근사" loading="lazy"
+        style="width: 100%; height: 1300px; border: 0;"></iframe>
+```
+:::
+
 ### 5) 🧪 실습: PC는 몇 개? — scree, 누적 설명분산, parallel analysis
 
 -   **Scree plot** — 각 PC의 분산(또는 비율)을 그려 꺾이는 곳을 봄 (원자료: PC1 15, PC2 3 → 83% / 17%)

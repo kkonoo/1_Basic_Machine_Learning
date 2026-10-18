@@ -244,6 +244,15 @@ ggplot(curve_df, aes(iter, loss, colour = setting)) +
 -   **Cook's distance** — 그 점을 뺐을 때 계수가 얼마나 변하는가
 -   영향점은 삭제 대상이 아니라 **확인 대상** — 측정 오류인지 실제 극단값인지
 
+**직접 해 보기** — [최소제곱: 잔차·이상치·leverage ↗](https://kkonoo.github.io/edu_sims/sims/least-squares/?lang=ko){target="_blank"}
+
+::: {.column-page}
+```{=html}
+<iframe src="https://kkonoo.github.io/edu_sims/sims/least-squares/?embed=1&lang=ko" title="최소제곱: 잔차·이상치·leverage" loading="lazy"
+        style="width: 100%; height: 1300px; border: 0;"></iframe>
+```
+:::
+
 ### 4) ⚠️ 목적에 따라 다른 기준
 
 | 목적 | 중요한 것 | 덜 중요한 것 |

@@ -37,7 +37,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   트리의 재귀 분할 과정을 설명하고 적합된 트리를 규칙으로 읽을 수 있다

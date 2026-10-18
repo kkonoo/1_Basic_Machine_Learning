@@ -29,7 +29,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   Empirical error와 generalization error를 구분할 수 있다

@@ -36,7 +36,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   **불순도 기반 중요도와 permutation importance의 차이를 설명하고, 어느 쪽을 언제 믿을지 말할 수 있다**

@@ -43,7 +43,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   **군집화에 "정답"이 없다는 것이 무슨 뜻인지 설명할 수 있다**

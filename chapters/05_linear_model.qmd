@@ -31,7 +31,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   선형 모델의 형태와 MSE·최소제곱법의 관계를 설명할 수 있다

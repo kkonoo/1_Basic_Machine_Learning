@@ -31,7 +31,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   Confusion matrix에서 파생 지표를 유도하고 상황에 맞게 고를 수 있다

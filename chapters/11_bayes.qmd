@@ -62,7 +62,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   **Bayes 최적 분류기와 Bayes risk가 무엇인지 설명하고, 왜 그것이 성능의 상한인지 말할 수 있다**

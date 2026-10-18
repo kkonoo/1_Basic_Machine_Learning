@@ -33,7 +33,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   $p \gg n$ 에서 최소제곱법이 실패하는 이유와 정규화의 해결 원리를 설명할 수 있다

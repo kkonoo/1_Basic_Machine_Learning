@@ -41,7 +41,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   **차원의 저주가 거리와 부피에 어떤 일을 하는지 수치로 설명할 수 있다**

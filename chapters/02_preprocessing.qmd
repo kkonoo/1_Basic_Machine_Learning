@@ -28,7 +28,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   결측 메커니즘(MCAR / MAR / MNAR)을 구분하고 처리 전략을 고를 수 있다

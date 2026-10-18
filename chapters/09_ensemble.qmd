@@ -46,7 +46,7 @@ format:
         ">
 ---
 
-::: {.callout-note}
+::: {.callout-note collapse="true"}
 ## 🎯 Learning objectives
 
 -   앙상블이 오차를 줄이는 조건(독립성)을 Hoeffding 부등식으로 설명할 수 있다

@@ -1,0 +1,128 @@
+<!-- 핵심 용어 hover: 각 장의 "🔑 Key terms" 표를 읽어, 본문에서 그 용어가 처음 나오는 곳에 점선 밑줄을 긋고
+     마우스를 올리면(모바일은 탭하면) 표의 정의를 띄웁니다. Quarto가 각주 미리보기에 쓰는 tippy를 그대로 씁니다.
+     qmd는 고칠 필요가 없고, 표를 고치면 hover 내용도 같이 바뀝니다.
+     "A / B"는 A와 B를 각각 찾고, "Ridge (L2)"의 괄호는 약어(L2, MDI 등)일 때만 따로 찾습니다.
+     한 용어(표의 한 행)는 본문에서 맨 처음 나오는 한 곳에만 붙습니다.
+     건너뛰는 곳: 제목(표 머리글 포함), 코드, 수식, 링크, 접힌 callout(Learning objectives 등), Key terms 절과 그 뒤(References). -->
+<style>
+  .kt-term {
+    text-decoration: underline dotted rgba(var(--course-accent-rgb), 0.8);
+    text-underline-offset: 3px;
+    cursor: help;
+  }
+  .kt-tip-term { font-weight: 600; margin-bottom: 0.15rem; }
+</style>
+<script>
+  (function () {
+    var SKIP = 'h1, h2, h3, h4, h5, h6, header, th, a, pre, code, .math, mjx-container, script, style, svg, iframe, button, ' +
+      '.callout-header, .collapse:not(.show), .kt-term';
+
+    // 표의 용어 칸 → 본문에서 찾을 문자열들
+    function keysOf(cell) {
+      var c = cell.cloneNode(true);
+      c.querySelectorAll('.math, mjx-container, code').forEach(function (e) { e.remove(); });
+      var keys = [];
+      c.textContent.replace(/\s+/g, ' ').split(' / ').forEach(function (part) {
+        part = part.replace(/\(([^)]*)\)/g, function (_, inner) {
+          inner = inner.trim();
+          if (/^[A-Z][A-Za-z0-9]*[A-Z0-9]$/.test(inner)) keys.push(inner);   // (IV), (MDI) 같은 약어
+          return '';
+        }).trim();
+        if (part) keys.push(part);
+      });
+      return keys;
+    }
+
+    // 약어(MAP, C 등)는 대소문자를 구분하고, 나머지는 구분하지 않음. 영어 복수형(-s, -es)도 허용
+    function patternOf(key) {
+      var esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+');
+      var plural = /[A-Za-z]$/.test(key) ? '(?:e?s)?' : '';
+      var flags = /[A-Z]{2}|^[A-Z]$/.test(key) ? '' : 'i';
+      return new RegExp('(?<![A-Za-z0-9-])' + esc + plural + '(?![A-Za-z0-9+])', flags);
+    }
+
+    function tipFor(row) {
+      var box = document.createElement('div');
+      var term = document.createElement('div');
+      term.className = 'kt-tip-term';
+      term.innerHTML = row.cells[0].innerHTML;
+      box.appendChild(term);
+      var def = document.createElement('div');
+      def.innerHTML = row.cells[1].innerHTML;
+      box.appendChild(def);
+      return box;
+    }
+
+    function attach(span, row) {
+      span.className = 'kt-term';
+      span.tabIndex = 0;
+      if (!window.tippy) {
+        span.title = row.cells[0].textContent.trim() + ' — ' + row.cells[1].textContent.trim();
+        return;
+      }
+      window.tippy(span, {
+        content: '',
+        onShow: function (inst) { inst.setContent(tipFor(row)); },   // 보일 때마다 표에서 읽음 (수식 렌더링 이후 상태)
+        trigger: 'mouseenter focus click',   // click: 탭(또는 클릭)으로 연 것은 다른 곳을 누를 때까지 유지
+        theme: 'quarto',
+        placement: 'bottom-start',
+        arrow: false,
+        maxWidth: 420,
+        delay: 100,
+      });
+    }
+
+    function run() {
+      var main = document.getElementById('quarto-document-content');
+      var section = document.getElementById('key-terms');
+      var table = section && section.querySelector('table');
+      if (!main || !table) return;
+
+      var terms = [];
+      table.querySelectorAll('tbody tr').forEach(function (row) {
+        if (row.cells.length < 2) return;
+        var keys = keysOf(row.cells[0]);
+        if (!keys.length) return;
+        terms.push({
+          row: row,
+          longest: Math.max.apply(null, keys.map(function (k) { return k.length; })),
+          patterns: keys.map(patternOf),
+        });
+      });
+      // 긴 용어부터 자리를 잡아야 "Bayes risk" 안의 "Bayes" 같은 겹침이 생기지 않음
+      terms.sort(function (a, b) { return b.longest - a.longest; });
+
+      // Key terms 절 앞까지의 본문 텍스트
+      var texts = [];
+      var walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (n) {
+          if (section.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING) return NodeFilter.FILTER_REJECT;
+          if (!n.data.trim() || n.parentElement.closest(SKIP)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      while (walker.nextNode()) texts.push(walker.currentNode);
+
+      terms.forEach(function (t) {
+        for (var i = 0; i < texts.length; i++) {
+          var node = texts[i], best = null;
+          t.patterns.forEach(function (re) {
+            var m = re.exec(node.data);
+            if (m && (!best || m.index < best.index || (m.index === best.index && m[0].length > best[0].length))) best = m;
+          });
+          if (!best) continue;
+          var hit = node.splitText(best.index);
+          var rest = hit.splitText(best[0].length);
+          var span = document.createElement('span');
+          hit.parentNode.replaceChild(span, hit);
+          span.appendChild(hit);
+          texts.splice(i + 1, 0, rest);   // 남은 뒷부분은 다른 용어가 계속 찾을 수 있게
+          attach(span, t.row);
+          return;
+        }
+      });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  })();
+</script>

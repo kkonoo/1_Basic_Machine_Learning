@@ -169,7 +169,7 @@ ggplot(tidyr::pivot_longer(curve, -depth, names_to = "set", values_to = "mse"),
 ### 3) Repeated CV
 
 -   k-fold CV를 서로 다른 분할로 여러 번 반복
--   분할 우연성에 의한 변동을 줄임
+-   데이터가 우연히 어떻게 나뉘었는지에 따라 생기는 변동을 줄임
 -   보고 시 **평균과 함께 표준편차를 제시**할 것
 
 ### 4) k는 몇으로?
@@ -198,7 +198,7 @@ ggplot(tidyr::pivot_longer(curve, -depth, names_to = "set", values_to = "mse"),
 $$\lim_{m \to \infty}\left(1 - \frac{1}{m}\right)^{m} = \frac{1}{e} \approx 0.368$$
 
 -   즉 약 **36.8%**가 미사용 → 이 샘플들로 성능 추정 가능(**OOB 추정**)
--   Random forest가 별도 검증 없이 성능을 내는 원리 (W9)
+-   Random forest가 별도 검증 없이 성능을 추정하는 원리 (W9)
 
 ### 3) 언제 쓰나
 
@@ -308,7 +308,7 @@ data.frame(
 
 -   후보 30개의 CV 점수를 구하고 **최고값을 성능으로 보고**한다고 하자
 -   각 점수에는 우연 변동이 섞여 있음
--   여러 개 중 **최댓값**을 고르는 순간, 그 값은 우연을 함께 고른 것
+-   여러 개 중 **최댓값**을 고르는 순간, 우연까지 함께 고른 것
 -   → **낙관 편향**. 후보 수가 많을수록 심해짐
 
 ### 3) Nested CV
@@ -409,7 +409,7 @@ round(colMeans(t(replicate(20, one_rep()))), 3)
 -   Hold-out은 층화하고 **반복**할 것. 한 번 나눈 값은 우연
 -   실무 기본은 **5-fold 또는 10-fold CV**, 표본이 작으면 repeated
 -   Bootstrap의 OOB는 약 **36.8%** — random forest의 내부 검증 원리
--   **분할 단위는 샘플이 아니라 그룹** — 환자 단위 분할 실패 시 난수 데이터로 정확도 0.98
+-   **분할 단위는 샘플이 아니라 그룹** — 환자 단위로 나누지 않으면 난수 데이터로 정확도 0.98
 -   배치는 층화, 시간은 시점 기준 분할
 -   **튜닝에 쓴 CV 점수를 성능으로 보고하면 낙관 편향** → nested CV
 -   CV는 절차의 성능을 추정 — 최종 모델은 전체 데이터로 재학습

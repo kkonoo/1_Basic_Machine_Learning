@@ -359,18 +359,7 @@ print(f"Selection inside fold : {right.mean():.3f}")
 
 ### 4) 올바른 순서
 
-```
-전체 데이터
-    ↓  분할 (train / test, 또는 CV fold)
-    ↓  ── 여기서부터 fold 안 ──────────────
-    ↓  결측 대치        ← training fold로만 학습
-    ↓  Scaling          ← training fold의 평균·표준편차
-    ↓  Feature selection← training fold의 통계량
-    ↓  재샘플링(SMOTE)  ← training fold에만
-    ↓  모델 학습
-    ↓  ── fold 밖 ───────────────────────
-    ↓  평가 (test fold는 변환만 적용, 재학습 금지)
-```
+![분할을 가장 먼저 하고, 결측 대치부터 모델 학습까지는 모두 fold 안에서 training fold의 정보로만 학습합니다. test fold는 fold 밖에서 이미 학습된 변환만 적용해 평가하며, 다시 학습하지 않습니다.](../assets/img/w2/pipeline_order.png){fig-alt="전처리 순서 흐름도: 전체 데이터를 먼저 분할한 뒤, fold 안에서 결측 대치(training fold로만 학습), Scaling(training fold의 평균·표준편차), Feature selection(training fold의 통계량), 재샘플링 SMOTE(training fold에만), 모델 학습을 차례로 하고, fold 밖에서 test fold에는 변환만 적용해 평가하며 재학습은 금지한다."}
 
 ::: {.callout-tip}
 ## 파이프라인 객체를 쓰면 구조적으로 막힌다

@@ -132,7 +132,7 @@ ggplot(curves, aes(T, error, colour = kind, linetype = kind)) +
 ### 4) 그런데 독립은 불가능하다
 
 -   개별 학습기는 **같은 training set**으로 학습합니다. 독립일 수가 없습니다
--   게다가 **accuracy와 diversity는 상충**합니다 — 모두 정확하려면 모두 진짜 함수에 가까워야 하고, 그러면 서로 닮습니다
+-   게다가 **accuracy와 diversity는 상충**합니다 — 학습기가 모두 정확하려면 모두 진짜 함수에 가까워야 하고, 그러면 서로 닮습니다
 -   그래서 앙상블의 기술은 전부 **"정확도를 크게 잃지 않으면서 어떻게 서로 다르게 만들까"** 입니다
 
 ::: {.callout-tip}
@@ -278,7 +278,7 @@ ggplot(curves2, aes(B, acc, colour = kind)) +
 
 -   bagging의 문제 — **강한 feature 하나가 있으면 모든 트리가 그걸 먼저 씁니다.** 트리들이 닮아버림
 -   random forest는 분할할 때마다 **feature의 무작위 부분집합**만 후보로 두어, 강한 feature를 강제로 비켜 가게 함
--   데이터 교란(bootstrap) + **속성 교란(feature sampling)** → 상관이 낮아짐 → 1절의 $\rho$ 가 내려감
+-   데이터 교란(bootstrap) + **속성 교란(feature sampling)** → 트리 사이 상관, 즉 1절의 $\rho$ 가 내려감
 -   보너스 — feature 일부만 봐도 되므로 결측치와 고차원에 robust, 학습도 빠름
 
 ::: {.callout-warning}
@@ -286,7 +286,8 @@ ggplot(curves2, aes(B, acc, colour = kind)) +
 
 진짜 RF는 **split마다** feature를 다시 뽑습니다. `rpart`로는 그렇게 할 수 없어, 여기서는 **tree마다 한 번** 뽑는 **random subspace method**(Ho 1998)로 근사했습니다.
 
-차이가 중요합니다 — tree마다 뽑으면 그 트리는 나머지 feature를 **영원히** 못 봅니다. 그래서 `mtry`가 작을 때 성능이 급격히 나빠집니다. 실무에서는 `ranger::ranger()` 나 `randomForest::randomForest()` 를 쓰세요.
+차이가 중요합니다.
+tree마다 뽑으면 그 트리는 나머지 feature를 **영원히** 못 봅니다. 그래서 `mtry`가 작을 때 성능이 급격히 나빠집니다. 실무에서는 `ranger::ranger()` 나 `randomForest::randomForest()` 를 쓰세요.
 :::
 
 ### 2) 🧪 실습: mtry를 바꾸면 무슨 일이 일어나는가
@@ -431,7 +432,7 @@ ggplot(ada_long, aes(M, acc, colour = set)) +
 -   **depth 2** — train 0.948 / test 0.818. 이 데이터에서 가장 좋음
 -   **depth 3** — **train이 1.0에 도달**하는데 test는 0.818에서 멈춥니다. 더 키워도 소용없음
 -   ✅ 원자료 노트의 *"learner의 성능이 낮을 때 사용"* 이 정확합니다. **boosting의 base learner는 약해야 합니다**
--   ⚠️ AdaBoost는 **라벨 노이즈에 약합니다** — 잘못 붙은 라벨은 계속 틀리므로 weight가 폭주합니다
+-   ⚠️ AdaBoost는 **라벨 노이즈에 약합니다** — 라벨이 잘못 붙은 샘플은 계속 틀리므로 weight가 폭주합니다
 
 ### 4) Gradient boosting — 잔차를 적합한다
 
@@ -513,7 +514,8 @@ ggplot(gb_long, aes(M, rmse, colour = eta)) +
 | **결측치 기본 방향** | 결측을 어느 쪽 가지로 보낼지 **학습** |
 | **LightGBM** | leaf-wise 성장 + 히스토그램 분할로 대용량에서 훨씬 빠름 |
 
-주요 hyperparameter — `eta`(learning rate), `max_depth`, `min_child_weight`, `subsample`, `colsample_bytree`, `lambda`, 그리고 **`early_stopping_rounds`**. 튜닝은 W3의 nested CV 구조를 그대로 쓰면 됩니다.
+주요 hyperparameter는 `eta`(learning rate), `max_depth`, `min_child_weight`, `subsample`, `colsample_bytree`, `lambda`, 그리고 **`early_stopping_rounds`** 입니다.
+튜닝은 W3의 nested CV 구조를 그대로 쓰면 됩니다.
 
 ------------------------------------------------------------------------
 
@@ -602,7 +604,7 @@ $$E_{\text{ensemble}} = \bar{E} - \bar{A}$$
 -   $\bar{E}$ — 개별 학습기 오차의 **가중평균** (정확도 항)
 -   $\bar{A}$ — 개별 예측이 앙상블 예측에서 벗어난 정도의 가중평균, 즉 **ambiguity = diversity**
 -   **다양할수록 오차가 줄어든다**는 것이 등식으로 증명됩니다
--   단, $\bar{E}$ 와 $\bar{A}$ 를 따로 최적화할 수는 없습니다. 다양하게 만들면 보통 $\bar{E}$ 도 커지니까요 → 3절의 `mtry` 곡선이 바로 이 상충입니다
+-   단, $\bar{E}$ 와 $\bar{A}$ 를 따로 최적화할 수는 없습니다. 다양하게 만들면 보통 $\bar{E}$ 도 커지니까요. 3절의 `mtry` 곡선이 바로 이 상충입니다
 
 ### 2) Diversity 측정
 
@@ -635,7 +637,7 @@ $$E_{\text{ensemble}} = \bar{E} - \bar{A}$$
 -   **boosting에서 M은 hyperparameter입니다** — 반드시 validation으로 early stopping
 -   stacking의 메타 학습기는 **OOF 예측으로만** 학습 (누수)
 -   변수 중요도는 앙상블에서도 **상관된 feature에 취약**합니다 (W14)
--   해석이 필요하면 성능과 맞바꾸는 것임을 인정하고 **SHAP 같은 사후 설명**을 붙일 것 (W14)
+-   해석이 필요하면 앙상블이 해석력을 성능과 맞바꾼다는 점을 인정하고 **SHAP 같은 사후 설명**을 붙일 것 (W14)
 :::
 
 ::: {.callout-important}
@@ -655,7 +657,7 @@ $$E_{\text{ensemble}} = \bar{E} - \bar{A}$$
 -   앙상블의 이론적 근거는 **개별 오차의 독립성** — 독립이면 $T$ 에 대해 오차가 지수적으로 감소
 -   실습 — 개별 오차 0.4가 독립 51개면 **0.074**, 상관 0.3이면 **0.329에서 멈춤**. 독립성이 전부입니다
 -   **Bagging** — bootstrap으로 데이터를 흔들어 **variance ↓**. 단일 트리 0.782 → 0.828. base learner는 **깊은 트리**
--   **OOB** — bootstrap에서 빠지는 $1/e \approx 0.368$ 로 공짜 validation. 실습에서 0.368 정확히 관측
+-   **OOB** — bootstrap에서 빠지는 $1/e \approx 0.368$ 의 샘플로 공짜 validation. 실습에서 0.368 정확히 관측
 -   **Random forest** — 데이터 + **속성** 교란. `mtry` 2→12에서 개별 정확도 0.546→0.725, 불일치도 0.486→0.292, 앙상블은 **가운데 `mtry = 8`에서 0.843 최대**
 -   **Boosting** — 순차적으로 틀린 샘플에 집중해 **bias ↓**. base learner는 **약해야** 함 (depth 3은 train 1.0인데 test는 제자리)
 -   **Gradient boosting** — 잔차를 적합. $\eta = 1.0$ 은 $M=300$ 에서 RMSE 0.459로 악화, $\eta = 0.1$ 은 0.346에서 안정

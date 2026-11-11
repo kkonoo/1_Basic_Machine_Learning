@@ -1037,6 +1037,8 @@ c(P_rain                 = round(p_rain[["rain"]], 5),
 | **분기** (꼬리-꼬리) | $a \leftarrow b \to c$ | **폐쇄** — $a \perp c \mid b$ |
 | **합류** (머리-머리) | $a \to b \leftarrow c$ | **개방** — 원래 독립이던 $a, c$ 가 **의존하게 됨** |
 
+![색칠한 node $b$ 의 값을 알면(조건으로 두면) 선형·분기에서는 $a$–$c$ 경로가 닫히고, 합류에서는 거꾸로 열립니다.](../assets/img/w11/d_separation.png){fig-alt="세 패널: a→b→c, a←b→c, a→b←c. 앞의 둘은 b를 알면 폐쇄, 세 번째 합류는 b를 알면 개방되어 a와 c가 의존하게 된다."}
+
 $a$ 와 $c$ 사이의 **모든** chain이 $W$ 로 폐쇄되면 $d\text{-}sep(a, c \mid W)$ 입니다.
 
 ::: {.callout-warning}

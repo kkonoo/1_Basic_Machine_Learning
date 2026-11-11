@@ -69,6 +69,8 @@ format:
 -   **Model-specific vs model-agnostic** — 트리의 불순도 감소처럼 모델 내부를 쓰는가 / 예측 함수만 있으면 어떤 모델에도 쓸 수 있는가
 -   이 챕터의 permutation importance, PDP, ICE, SHAP은 모두 **model-agnostic**입니다 — `predict()`만 있으면 됩니다
 
+![이 장의 방법을 두 기준으로 나눈 지도입니다. 불순도 감소(MDI)만 트리 내부를 쓰고 나머지는 모두 model-agnostic이며, ICE를 평균하면 PDP가, 여러 환자의 SHAP을 요약하면 전역 중요도(평균 |SHAP|)가 됩니다.](../assets/img/w14/interpretation_map.png){fig-alt="2×2 표: 행은 global과 local, 열은 model-specific과 model-agnostic. global·specific 칸에 불순도 감소(MDI), global·agnostic 칸에 permutation importance, PDP, 평균 |SHAP|, local·agnostic 칸에 ICE와 SHAP이 있고 ICE→PDP, SHAP→평균 |SHAP|로 평균 화살표가 이어진다. local·specific 칸은 이 장에서 다루지 않는다."}
+
 ### 3) 🧪 실습: 진실을 아는 모의 코호트
 
 설명이 맞는지 확인하려면 **진짜 규칙을 알아야** 합니다. 결과(예: 30일 내 악화)를 다음 규칙으로 만듭니다.

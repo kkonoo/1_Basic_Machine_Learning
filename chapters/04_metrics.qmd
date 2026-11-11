@@ -85,6 +85,8 @@ format:
 -   **Recall과 specificity** — 실제 class를 기준으로 계산. 유병률과 무관
 -   **Precision과 NPV** — 예측을 기준으로 계산. **유병률에 크게 의존**
 
+![작은 2×2 그림은 큰 표와 같은 배치이며, 진한 칸이 분자, 진한 칸과 옅은 칸을 합친 것이 분모입니다. Recall·specificity·FPR은 실제 class의 한 행 안에서, precision·NPV는 예측의 한 열 안에서 계산된다는 점을 보면 됩니다.](../assets/img/w4/confusion_matrix.png){fig-alt="왼쪽은 실제(행) × 예측(열) 2×2 confusion matrix로 TP, FN, FP, TN 네 칸이다. 오른쪽은 파생 지표 다섯 개를 작은 2×2 그림으로 보여 준다. Recall, specificity, FPR은 한 행 안의 비율이고 precision과 NPV는 한 열 안의 비율이다."}
+
 ### 3) 무엇을 볼 것인가
 
 | 상황 | 중요한 지표 | 이유 |

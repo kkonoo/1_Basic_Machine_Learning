@@ -129,6 +129,8 @@ $$\min_{\mathbf{w}} \; \|\mathbf{y} - X\mathbf{w}\|^2 + \lambda \sum_{j=1}^{p} |
 -   마름모는 **꼭짓점이 축 위에** 있음 → 닿기 쉬운 곳이 곧 $w_j = 0$
 -   원은 매끄러워 축에 닿을 확률이 사실상 0
 
+![손실 등고선(회색)이 제약 영역에 처음 닿는 점이 해입니다. 원(L2)은 축이 아닌 곳에서 닿지만, 마름모(L1)는 축 위의 꼭짓점에서 닿기 쉬워 $w_1 = 0$ 이 됩니다. 등고선 모양은 설명용으로 고른 것입니다.](../assets/img/w6/l1_l2_geometry.png){fig-alt="두 패널. 왼쪽은 원 모양 L2 제약 영역에 타원 등고선이 축이 아닌 점에서 닿고, 오른쪽은 마름모 L1 제약 영역에 같은 등고선이 w2 축 위 꼭짓점에서 닿아 w1이 0이 된다."}
+
 **직접 해 보기** — [Ridge와 Lasso: λ와 수축 ↗](https://kkonoo.github.io/edu_sims/sims/ridge-lasso/?lang=ko){target="_blank"}
 
 ::: {.column-page}

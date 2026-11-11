@@ -63,6 +63,7 @@ format:
     toc-title: "Contents"
     toc-float: true
     page-layout: full
+    lightbox: auto              # 그림을 누르면 크게 보기
 
     code-fold: false  
     code-copy: true

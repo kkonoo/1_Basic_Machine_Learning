@@ -285,6 +285,8 @@ $$p = \sigma(z) = \frac{1}{1 + e^{-z}}, \qquad z = \mathbf{w}^{\mathsf{T}}\mathb
 
 -   logit이 **link function** — 선형 형태와 확률을 잇는 다리
 
+![$0$–$1$에 갇힌 확률 $p$ 를 odds, logit으로 바꾸면 실수 전체를 움직이는 선형식 $\mathbf{w}^{\mathsf{T}}\mathbf{x} + b$ 와 같아집니다. 거꾸로 sigmoid는 어떤 $z$ 값이든 다시 $0$–$1$ 사이의 확률로 돌려줍니다.](../assets/img/w5/odds_logit_sigmoid.png){fig-alt="위: 확률 p(0~1) → odds p/(1−p)(0~∞) → logit log p/(1−p)(실수 전체) = 선형식 z = wᵀx + b, 그리고 선형식에서 p로 되돌아가는 sigmoid 화살표 p = σ(z) = 1/(1+e^−z). 아래: z가 작으면 0, 크면 1에 다가가는 S자 sigmoid 곡선."}
+
 ### 3) 계수 해석 — odds ratio
 
 -   $x_j$ 가 1 증가할 때 **logit이 $w_j$ 만큼 증가**

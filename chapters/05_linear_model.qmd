@@ -50,7 +50,7 @@ format:
 
 ### 1) 데이터와 모델
 
--   샘플 $\mathbf{x} = (x_1; x_2; \dots ; x_d)$ — $d$ 개 feature를 가진 관측 하나
+-   샘플 $\mathbf{x} = (x_1; x_2; \dots ; x_d)$ — $d$ 개 feature로 이루어진 관측 하나
 -   $x_i$ — 샘플 $\mathbf{x}$ 의 $i$ 번째 feature 값
 -   모델 — feature들의 **선형 결합**
 
@@ -95,7 +95,7 @@ $$\text{MSE} = \frac{1}{m}\sum_{i=1}^{m}\left(y_i - f(\mathbf{x}_i)\right)^2$$
 
 $$\hat{\mathbf{w}} = (X^{\mathsf{T}}X)^{-1}X^{\mathsf{T}}\mathbf{y}$$
 
--   ⚠️ $X^{\mathsf{T}}X$ 가 **역행렬을 갖지 않으면** 계산 불가
+-   ⚠️ $X^{\mathsf{T}}X$ 의 **역행렬이 없으면** 계산 불가
     -   feature 수 > 샘플 수 ($p \gg n$)
     -   완전 다중공선성
     -   → W6의 정규화가 이 문제를 직접 해결
@@ -290,7 +290,7 @@ $$p = \sigma(z) = \frac{1}{1 + e^{-z}}, \qquad z = \mathbf{w}^{\mathsf{T}}\mathb
 -   $x_j$ 가 1 증가할 때 **logit이 $w_j$ 만큼 증가**
 -   지수화하면 **odds ratio**: $\text{OR} = e^{w_j}$
 -   OR > 1 — 위험 증가 / OR < 1 — 위험 감소
--   ⚠️ **odds ratio는 상대위험도(RR)가 아님** — 유병률이 높으면 크게 벌어짐
+-   ⚠️ **odds ratio는 상대위험도(RR)가 아님** — 유병률이 높으면 둘의 차이가 크게 벌어짐
 
 ### 4) 🧪 실습
 
@@ -327,7 +327,7 @@ data.frame(
 -   **EPV (events per variable)** = 사건 수 / 예측변수 수
 -   경험 규칙 — **EPV ≥ 10** (Peduzzi et al. 1996)
 -   사건이 50건인데 변수 20개 → EPV 2.5 → 계수가 심하게 불안정
--   완화 가능하다는 후속 연구도 있으나(Vittinghoff & McCulloch 2007), **사건 수가 표본 수보다 중요**하다는 원칙은 동일
+-   이 기준을 완화해도 된다는 후속 연구도 있으나(Vittinghoff & McCulloch 2007), **사건 수가 표본 수보다 중요**하다는 원칙은 동일
 -   EPV가 부족하면 → 변수를 줄이거나 **정규화(W6)**
 :::
 
@@ -340,8 +340,8 @@ data.frame(
 -   **① 통계적 근거** — log loss는 베르누이 likelihood의 **음의 로그**
     -   즉 log loss 최소화 = **MLE** (W11에서 다시 등장)
 -   **② 볼록성** — log loss는 $\mathbf{w}$ 에 대해 전역적으로 볼록
-    -   MSE + sigmoid 조합은 **볼록성이 보장되지 않음** → 국소최소 위험
--   **③ 기울기 소실** — 확신을 갖고 틀렸을 때 MSE는 **학습을 멈춤**
+    -   MSE + sigmoid 조합은 **볼록성이 보장되지 않음** → 국소최소에 빠질 위험
+-   **③ 기울기 소실** — 확신을 갖고 틀렸을 때 MSE로는 **학습이 멈춤**
 
 $$L_{\text{log}} = -\frac{1}{m}\sum_{i=1}^{m}\Big[y_i \log p_i + (1-y_i)\log(1-p_i)\Big]$$
 
@@ -391,7 +391,7 @@ data.frame(
 ```
 
 -   **MSE + sigmoid** — 구간의 상당 부분이 오목. 즉 **비볼록**
-    -   최적해에서 멀면 거의 평평 → gradient descent가 기어감
+    -   최적해에서 멀면 거의 평평 → gradient descent가 매우 느리게 진행됨
 -   **Log loss** — 오목 구간 0. 전 구간 **볼록**
 -   두 방법의 argmin은 결국 비슷하지만, **도달 과정이 전혀 다름**
 
@@ -430,9 +430,9 @@ data.frame(
 ```
 
 -   $p = 0.01$ (완전히 틀림) — MSE의 기울기는 **0.0196**, log loss는 **0.99**
--   약 **50배 차이**. MSE는 가장 크게 틀린 샘플에서 가장 적게 배움
+-   약 **50배 차이**. MSE로 학습하면 가장 크게 틀린 샘플에서 가장 적게 배움
 -   원인 — MSE의 기울기에 $\sigma'(z) = p(1-p)$ 가 곱해져 양 끝에서 0으로 소멸
--   log loss는 이 항이 **정확히 약분됨**
+-   log loss에서는 이 항이 **정확히 약분됨**
 
 ### 4) 그래서 갱신식은 같은 모양
 
@@ -482,10 +482,10 @@ $$\frac{\partial L_{\text{log}}}{\partial \mathbf{w}} = \frac{1}{m}X^{\mathsf{T}
 -   Gradient descent — learning rate가 전부. 임계값 $2/L$ 초과 시 **발산**
 -   진단은 목적에 따라 — 해석이면 잔차·VIF, 예측이면 교차검증
 -   **오믹스는 다중공선성이 기본값** — 개별 계수 해석은 위험
--   Logistic regression — odds → logit으로 선형화, 계수 지수화 = **odds ratio**
+-   Logistic regression — odds → logit으로 선형화, 계수를 지수화하면 **odds ratio**
 -   **EPV ≥ 10** — 사건 수가 표본 수보다 중요
 -   log loss를 쓰는 이유 — MLE와 일치 / 볼록 / **기울기가 소실되지 않음**
--   $p=0.01$ 에서 기울기 차이 약 **50배** — MSE는 가장 틀린 곳에서 가장 적게 배움
+-   $p=0.01$ 에서 기울기 차이 약 **50배** — MSE로는 가장 틀린 곳에서 가장 적게 배움
 
 ## 🔑 Key terms
 

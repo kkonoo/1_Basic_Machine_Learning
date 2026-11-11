@@ -61,7 +61,7 @@ W3의 검증 설계, W6의 정규화, W7의 pruning, W9의 ensemble이 전부 �
 -   🎯 기본 용어, hypothesis space와 version space
 -   🎯 Inductive bias, Occam's razor, No Free Lunch
 -   🧪 같은 데이터에 세 알고리즘 → 결정경계 비교
--   ⚠️ 발현 행렬의 행·열이 ML 라이브러리 기대와 반대
+-   ⚠️ 발현 행렬의 행·열이 ML 라이브러리가 기대하는 방향과 반대
 
 [W1 강의자료 →](chapters/01_intro.qmd)
 :::

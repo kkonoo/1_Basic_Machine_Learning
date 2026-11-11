@@ -153,6 +153,8 @@ ggplot(curves, aes(T, error, colour = kind, linetype = kind)) +
 | base learner | 약한 학습기(얕은 트리) | 강한 학습기(깊은 트리) |
 | 대표 | **Boosting** (AdaBoost, GBM) | **Bagging**, Random forest |
 
+![Bagging은 복원추출한 부트스트랩 표본마다 학습기를 따로 만들어 평균·다수결로 묶고, Boosting은 앞 학습기가 틀린 샘플의 weight를 키워 다음 학습기를 만든 뒤 모든 학습기를 가중 투표로 묶습니다. 점 하나가 샘플 하나이고, 겹친 점은 두 번 뽑힌 샘플, 점선 원은 뽑히지 않은 샘플, 큰 점은 weight가 커진 샘플입니다(점의 배치는 설명용).](../assets/img/w9/bagging_boosting.png){fig-alt="위: training data에서 부트스트랩 표본 1, 2, …, B를 뽑아 깊은 트리 학습기 B개를 병렬로 만들고 평균(회귀)·다수결(분류)로 결합해 variance를 줄인다. 아래: 같은 weight로 시작해 h1을 만들고, h1이 틀린 샘플의 weight를 키워 h2를 만드는 식으로 hM까지 순차적으로 만든 뒤 모든 학습기를 가중 투표(Σ α_m h_m)로 결합해 bias를 줄인다."}
+
 ------------------------------------------------------------------------
 
 ## 2. Bagging 🎲

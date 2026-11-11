@@ -65,6 +65,8 @@ format:
 -   root에서 leaf까지의 경로 하나가 **규칙 하나**
 -   leaf의 예측값 — 분류는 그 leaf에 속한 샘플의 다수 class, 회귀는 평균
 
+![root와 internal node의 질문 하나하나가 feature 공간에 축과 평행한 선을 하나씩 긋고, leaf A·B·C는 그렇게 생긴 직사각형 A·B·C에 하나씩 대응합니다. 분할값 CRP 10, 나이 60은 설명용으로 고른 값입니다.](../assets/img/w7/tree_partition.png){fig-alt="왼쪽은 root node 'CRP > 10?'와 internal node '나이 > 60?'로 이루어진 트리로, leaf A는 No, B는 No, C는 Yes이다. 오른쪽은 CRP와 나이를 축으로 한 평면이 CRP 10의 세로선과 나이 60의 가로선으로 직사각형 세 개로 나뉜 모습이며, CRP가 10을 넘고 나이가 60을 넘는 영역 C만 Yes이다."}
+
 ### 2) Divide-and-conquer
 
 트리 학습은 재귀적입니다.

@@ -916,6 +916,8 @@ ggplot(hm, aes(factor(comp), gene, fill = v)) + geom_raster() + facet_wrap(~ m) 
 4.  **시각화만** t-SNE/UMAP
 5.  해석이 필요하면 PCA loading, **NMF 프로그램**, 또는 군집별 marker
 
+![위 목록의 다섯 단계를 순서대로 보여 줍니다. 군집화와 kNN 그래프는 잡음 위의 PC 공간에서 하고, t-SNE/UMAP은 시각화에만 씁니다.](../assets/img/w13/omics_flow.png){fig-alt="다섯 단계 흐름도: 1 정규화와 log 변환 후 변동이 큰 유전자 선택, 2 PCA로 잡음 위의 PC만 남김, 3 그 PC 공간에서 군집화와 kNN 그래프, 4 t-SNE/UMAP은 시각화만(군집 크기·거리·배치로 주장하지 않음), 5 필요하면 PCA loading, NMF 프로그램, 군집별 marker로 해석."}
+
 ::: {.callout-warning}
 ## ⚠️ 차원 축소 결과를 논문에 쓸 때
 

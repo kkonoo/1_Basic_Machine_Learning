@@ -660,6 +660,8 @@ prototype을 "각 class의 대표 샘플"로 해석할 수 있다는 장점이 �
 -   **Border point** — core는 아니지만 어떤 core의 이웃인 점
 -   **Noise** — 둘 다 아닌 점. **어느 군집에도 배정하지 않습니다**
 
+![점선 원이 각 점의 $\varepsilon$-이웃이고, 원 안의 점 수(자기 자신 포함)가 MinPts 이상이면 core point입니다. MinPts = 5는 아래 실습과 같은 값이고, 점 배치는 설명용입니다.](../assets/img/w12/dbscan_points.png){fig-alt="점들의 산점도에 점선 원 세 개: 원 안에 점이 7개인 core point(MinPts 5 이상), 원 안에 점이 3개지만 core가 들어 있는 border point, 원 안에 자기 자신뿐이고 core도 없는 noise(× 표시)."}
+
 core에서 core로 **밀도-도달 가능(density-reachable)**하게 이어진 점들이 하나의 군집입니다.
 
 ✅ 군집 수를 미리 정하지 않아도 되고, **모양이 자유롭고**, **이상치를 스스로 걸러냅니다.**

@@ -231,6 +231,8 @@ feature 3개짜리 장난감 문제도 후보가 65개입니다.
 살아남은 후보들은 training data에서는 똑같이 완벽하지만, 새로운 데이터에서는 서로 다른 답을 냅니다.
 그럼 우리는 무엇을 근거로 하나를 고를까요?
 
+![Hypothesis space 안에서 training data와 모순되지 않는 model만 version space로 남습니다. 남은 후보가 여러 개이므로 inductive bias가 그중 하나를 고릅니다. 점 65개는 위 장난감 문제의 후보 수에 맞췄고, version space에 남은 점의 수와 배치는 설명용입니다.](../assets/img/w1/version_space.png){fig-alt="큰 상자 Hypothesis space 안에 빈 점 58개와 작은 상자 Version space가 있고, version space 안에는 채운 점 7개가 남아 있다. 그중 하나에 화살표가 닿으며 inductive bias가 그중 하나를 고른다고 적혀 있다."}
+
 ## Inductive bias
 
 Version space에 남은 후보 중 **어느 것을 선택할지 결정하는 알고리즘의 성향**을 inductive bias(귀납적 편향)라고 합니다.

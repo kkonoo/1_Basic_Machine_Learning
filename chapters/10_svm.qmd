@@ -77,6 +77,8 @@ $$\gamma = \frac{2}{\|\mathbf{w}\|}$$
 -   **margin을 최대화 = $\|\mathbf{w}\|$ 를 최소화**
 -   $\mathbf{w}^{\mathsf{T}}\mathbf{x}+b = \pm 1$ 위에 놓인 점들이 **support vector**
 
+![실선이 분리 초평면 $\mathbf{w}^{\mathsf{T}}\mathbf{x}+b=0$, 양쪽 점선이 margin 경계 $\mathbf{w}^{\mathsf{T}}\mathbf{x}+b=\pm 1$ 이고, 두 점선 사이의 폭이 $\gamma = 2/\|\mathbf{w}\|$ 입니다. 검은 고리로 둘러싼 점들이 margin 경계 위에 놓인 support vector입니다. 점 배치는 설명용입니다.](../assets/img/w10/max_margin.png){fig-alt="두 class의 점(동그라미와 네모) 사이에 기울어진 실선 초평면이 있고, 양쪽에 평행한 점선 margin 경계가 있다. 두 점선 사이 폭은 2/‖w‖로 표시되고, 점선 위에 놓인 점 세 개가 검은 고리로 둘러싸여 support vector로 표시되어 있다."}
+
 ### 3) 최적화 문제
 
 $$\min_{\mathbf{w},b} \; \frac{1}{2}\|\mathbf{w}\|^2 \quad \text{s.t.} \quad y_i(\mathbf{w}^{\mathsf{T}}\mathbf{x}_i + b) \ge 1 \;\; \forall i$$
